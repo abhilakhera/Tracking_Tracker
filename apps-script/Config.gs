@@ -55,39 +55,35 @@ var CONFIG = {
   // Couriers.
   //   aliases  - how the courier may be spelled in column H. Case, spaces and
   //              punctuation are ignored, and "Delhivery B2C" also matches "delhivery".
-  //   provider - which API to use:
-  //                'DELHIVERY'    = Delhivery's own API (needs a Delhivery API token)
-  //                'TRACKINGMORE' = TrackingMore, a multi-courier API (needs a TrackingMore key)
-  //                'AUTO'         = Delhivery API if a Delhivery token is saved, else TrackingMore
-  //   trackingMoreCode   - TrackingMore's ID for this courier. Leave '' to look it up
-  //                        automatically (searches TrackingMore's courier list for trackingMoreSearch).
+  //   provider - where the status comes from:
+  //                'DELHIVERY'    = Delhivery's own API (needs a Delhivery token, free)
+  //                'TRACKCOURIER' = TrackCourier.io (needs your TrackCourier.io key)
+  //                'DPWORLD_WEB'  = DP World's own tracking website
+  //                'AUTO'         = Delhivery API if a Delhivery token is saved, else TrackCourier.io
+  //   trackCourierSlug - TrackCourier.io's name for the courier.
   COURIERS: {
     DELHIVERY: {
       label: 'Delhivery',
       aliases: ['delhivery'],
       provider: 'AUTO',
-      trackingMoreCode: 'delhivery',
-      trackingMoreSearch: ['delhivery'],
+      trackCourierSlug: 'delhivery',
     },
     SAFEXPRESS: {
       label: 'Safexpress',
       aliases: ['safexpress', 'safeexpress'],
-      provider: 'TRACKINGMORE',
-      trackingMoreCode: 'safexpress',
-      trackingMoreSearch: ['safexpress', 'safe express'],
+      provider: 'TRACKCOURIER',
+      trackCourierSlug: 'safexpress',
     },
     DPWORLD: {
       label: 'DP World',
       aliases: ['dpworld', 'dpw', 'delex'],
-      provider: 'TRACKINGMORE',
-      trackingMoreCode: '', // looked up automatically; see docs/TROUBLESHOOTING.md
-      trackingMoreSearch: ['dp world', 'dpworld', 'delex'],
+      provider: 'DPWORLD_WEB',
     },
   },
 
   // API addresses. You don't need to change these.
   DELHIVERY_BASE_URL: 'https://track.delhivery.com',
-  TRACKINGMORE_BASE_URL: 'https://api.trackingmore.com/v4',
+  TRACKCOURIER_BASE_URL: 'https://api.trackcourier.io/v1',
 
   // Technical limits. Google stops a script after 6 minutes, so the script pauses
   // before that and resumes automatically a minute later.

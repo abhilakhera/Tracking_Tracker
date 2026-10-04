@@ -90,7 +90,7 @@ function parseDelhiveryResponse_(json) {
 /** Used by "Test API connections". Returns a one-line result. */
 function testDelhiveryConnection_() {
   var token = getSecret_('DELHIVERY_TOKEN');
-  if (!token) return 'Delhivery: no token saved (Delhivery numbers will go through TrackingMore if provider is AUTO).';
+  if (!token) return 'Delhivery: no token saved (optional; Delhivery numbers go through TrackCourier.io).';
   var response = UrlFetchApp.fetch(CONFIG.DELHIVERY_BASE_URL + '/api/v1/packages/json/?waybill=0000000000000', {
     headers: { Authorization: 'Token ' + token }, muteHttpExceptions: true,
   });

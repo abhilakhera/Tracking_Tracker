@@ -53,32 +53,27 @@ const ss = {
 const calls = [];
 const json = (code, body) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(body) });
 function fetch(url, opts) {
-  calls.push((opts.method || 'get').toUpperCase() + ' ' + url);
-  if (url.includes('delhivery.com')) {
-    assert.strictEqual(opts.headers.Authorization, 'Token DTOKEN');
-    return json(200, { ShipmentData: [{ Shipment: { AWB: '1111111111111', Status: { Status: 'In Transit', StatusDateTime: '2026-10-03T23:30:00', StatusLocation: 'Pune_Hub', Instructions: 'Bag received' } } }] });
-  }
-  assert.strictEqual(opts.headers['Tracking-Api-Key'], 'TMKEY');
-  if (url.includes('/couriers/all')) return json(200, { meta: { code: 200 }, data: [{ courier_name: 'DP World Express India', courier_code: 'dp-world-in', courier_country_iso2: 'IN' }] });
-  if (url.includes('/trackings/get')) {
-    if (url.includes('courier_code=safexpress')) {
-      return json(200, { meta: { code: 200 }, data: [{ tracking_number: 'SX9001', delivery_status: 'delivered', origin_info: { trackinfo: [{ checkpoint_date: '2026-10-02 10:15:00', tracking_detail: 'Delivered', location: 'Chennai' }] } }] });
+  calls.push('GET ' + url);
+  assert.strictEqual(opts.headers.Authorization, 'Token DTOKEN');
+  return json(200, { ShipmentData: [{ Shipment: { AWB: '1111111111111', Status: { Status: 'In Transit', StatusDateTime: '2026-10-03T23:30:00', StatusLocation: 'Pune_Hub', Instructions: 'Bag received' } } }] });
+}
+function fetchAll(requests) {
+  return requests.map((req) => {
+    calls.push('GET ' + req.url);
+    assert.strictEqual(req.headers['X-API-Key'], 'TCKEY');
+    assert.ok(req.url.startsWith('https://api.trackcourier.io/v1/track?courier=safexpress&tracking_number='), req.url);
+    if (req.url.endsWith('SX9001')) {
+      return json(200, { ShipmentState: 'Delivered', MostRecentStatus: 'Delivered', Checkpoints: [{ Activity: 'Delivered', Date: '02-Oct-2026', Time: '10:15', Location: 'Chennai' }] });
     }
-    assert.ok(url.includes('courier_code=dp-world-in'), url);
-    return json(200, { meta: { code: 200 }, data: [] });
-  }
-  if (url.includes('/trackings/batch')) {
-    const body = JSON.parse(opts.payload);
-    return json(200, { meta: { code: 200 }, data: { success: body.map((b) => ({ tracking_number: b.tracking_number })), error: [] } });
-  }
-  throw new Error('unexpected ' + url);
+    return json(404, { message: 'not found' });
+  });
 }
 
-const props = { DELHIVERY_TOKEN: 'DTOKEN', TRACKINGMORE_API_KEY: 'TMKEY' };
+const props = { DELHIVERY_TOKEN: 'DTOKEN', TRACKCOURIER_API_KEY: 'TCKEY' };
 const ctx = vm.createContext({
   console: { log() {}, error: console.error },
   SpreadsheetApp: { getActiveSpreadsheet: () => ss },
-  UrlFetchApp: { fetch },
+  UrlFetchApp: { fetch, fetchAll },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
   LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
   ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {} },
@@ -88,7 +83,7 @@ const ctx = vm.createContext({
     parseDate: (s) => new Date(Date.parse(s + 'T00:00:00+05:30')),
   },
 });
-for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackingMore.gs', 'Main.gs']) {
+for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Main.gs']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
 }
 vm.runInContext('scheduledTrackingUpdate()', ctx);
@@ -98,24 +93,23 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
 // Delhivery: 23:30 IST on 3 Oct → stored as the date 3 Oct (midnight IST)
 assert.strictEqual(d[1][8], 'In Transit - Bag received (Pune_Hub)');
 assert.strictEqual(iso(d[1][9]), '2026-10-02T18:30:00.000Z');
-// Safexpress via TrackingMore
+// Safexpress via TrackCourier.io
 assert.strictEqual(d[2][8], 'Delivered (Chennai)');
 assert.strictEqual(iso(d[2][9]), '2026-10-01T18:30:00.000Z');
-// DP World newly registered → left blank for now
+// DP World not connected yet → left blank, explained in the log
 assert.strictEqual(d[3][8], '');
 // already delivered row untouched
 assert.strictEqual(d[4][8], 'Delivered');
 assert.strictEqual(d[4][9], 'old');
-// unregistered Safexpress number SX9002 → registered, left blank
+// unknown Safexpress number → left blank, explained in the log
 assert.strictEqual(d[7][8], '');
 assert.strictEqual(main.formats['2,10'], 'dd-mmm-yyyy');
-assert.strictEqual(props.TM_CODE_DPWORLD, 'dp-world-in');
 
 const log = ss.getSheetByName('Tracking Log').data;
 const msgs = log.slice(1).map((r) => `${r[1]} ${r[4]} ${r[5]}`);
 assert.ok(msgs.some((m) => m.startsWith('7 ERROR Courier name not recognised')), msgs.join('\n'));
-assert.ok(msgs.some((m) => m.startsWith('4 INFO Registered with TrackingMore')), msgs.join('\n'));
-assert.ok(msgs.some((m) => m.startsWith('8 INFO Registered with TrackingMore')), msgs.join('\n'));
+assert.ok(msgs.some((m) => m.startsWith('4 ERROR DP World tracking is not connected yet')), msgs.join('\n'));
+assert.ok(msgs.some((m) => m.startsWith('8 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
 assert.ok(!calls.some((c) => c.includes('2222222222222')), 'delivered row should not be re-checked');
 
 console.log('End-to-end run: OK');

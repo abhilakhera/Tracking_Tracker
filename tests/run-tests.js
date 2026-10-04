@@ -12,7 +12,7 @@ const ctx = vm.createContext({
   console,
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty() {}, deleteProperty() {} }) },
 });
-for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackingMore.gs', 'Main.gs']) {
+for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Main.gs']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
 }
 const g = (expr) => vm.runInContext(expr, ctx);
@@ -79,39 +79,32 @@ test('falls back to latest scan and RTO Delivered', () => {
   assert.strictEqual(iso(out.ABC1.date), '2026-10-01T11:00:00.000Z');
 });
 
-console.log('TrackingMore response parsing');
-test('picks the newest checkpoint', () => {
-  const out = g('parseTrackingMoreItem_')({
-    tracking_number: 'SX123', delivery_status: 'transit',
-    origin_info: { trackinfo: [
-      { checkpoint_date: '2026-09-30 09:00:00', tracking_detail: 'Booked', location: 'Delhi' },
-      { checkpoint_date: '2026-10-02 18:45:00', tracking_detail: 'Arrived at hub', location: 'Nagpur' },
-    ] },
+console.log('TrackCourier.io response parsing');
+test('PascalCase answer, newest checkpoint wins', () => {
+  const out = g('parseTrackCourierResult_')({
+    ShipmentState: 'InTransit', MostRecentStatus: 'In Transit',
+    Checkpoints: [
+      { Activity: 'Arrived at hub', CheckpointState: 'intransit', Date: '02-Oct-2026', Time: '18:45', Location: 'Nagpur' },
+      { Activity: 'Booked', CheckpointState: 'pickup', Date: '30-Sep-2026', Time: '09:00', Location: 'Delhi' },
+    ],
   });
   assert.strictEqual(out.status, 'In Transit - Arrived at hub (Nagpur)');
   assert.strictEqual(iso(out.date), '2026-10-02T13:15:00.000Z');
 });
-test('delivered via latest_event only', () => {
-  const out = g('parseTrackingMoreItem_')({ delivery_status: 'delivered', latest_event: 'Delivered to consignee', latest_checkpoint_time: '2026-10-03T12:00:00+05:30' });
-  assert.strictEqual(out.status, 'Delivered - Delivered to consignee');
-  assert.strictEqual(iso(out.date), '2026-10-03T06:30:00.000Z');
+test('snake_case answer (wrapped in data) also works', () => {
+  const out = g('parseTrackCourierResult_')({ data: { status: 'delivered',
+    checkpoints: [{ activity: 'Delivered', date: '28-Aug-2026', time: '09:41', location: 'Delhi' }] } });
+  assert.strictEqual(out.status, 'Delivered (Delhi)');
+  assert.strictEqual(iso(out.date), '2026-08-28T04:11:00.000Z');
 });
-test('pending with no data → pending', () => assert.ok(g('parseTrackingMoreItem_')({ delivery_status: 'pending' }).pending));
-test('notfound → Not Found, no date', () => {
-  const out = g('parseTrackingMoreItem_')({ delivery_status: 'notfound' });
-  assert.strictEqual(out.status, 'Not Found');
-  assert.strictEqual(out.date, null);
+test('no events → error, so the row is left as is', () => assert.ok(g('parseTrackCourierResult_')({ Checkpoints: [] }).error));
+test('bad key stops the run with a clear message', () => {
+  assert.throws(() => g('handleTrackCourierResponse_')(401, '{"message":"invalid key"}', 'safexpress'), /rejected the API key/);
 });
-test('batch-create errors are collected', () => {
-  const errs = g('createErrors_')({ meta: { code: 200 }, data: { success: [{ tracking_number: 'A' }], error: [{ tracking_number: 'b', errorCode: 4101, errorMessage: 'Tracking No. already exists.' }] } });
-  assert.deepStrictEqual(Object.assign({}, errs), { B: 'Tracking No. already exists.' });
-});
-test('courier lookup prefers the Indian DP World entry', () => {
-  const r = g('pickCourier_')([
-    { courier_name: 'DP World Cargo', courier_code: 'dpworld-ae', courier_country_iso2: 'AE' },
-    { courier_name: 'DP World Express', courier_code: 'dpworld-in', courier_country_iso2: 'IN' },
-  ], ['dp world', 'dpworld']);
-  assert.strictEqual(r.best.courier_code, 'dpworld-in');
+test('404 → row-level error', () => assert.ok(/no shipment/.test(g('handleTrackCourierResponse_')(404, '{}', 'safexpress').error)));
+test('state names are made readable', () => {
+  assert.strictEqual(g('humanizeState_')('InTransit'), 'In Transit');
+  assert.strictEqual(g('humanizeState_')('out_for_delivery'), 'Out For Delivery');
 });
 
 console.log('Misc');

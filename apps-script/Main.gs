@@ -48,8 +48,8 @@ function setApiKeys() {
   var ui = SpreadsheetApp.getUi();
   var props = PropertiesService.getScriptProperties();
   var keys = [
-    ['TRACKINGMORE_API_KEY', 'TrackingMore API key (used for Safexpress, DP World, and Delhivery if no Delhivery token)'],
-    ['DELHIVERY_TOKEN', 'Delhivery API token (optional)'],
+    ['TRACKCOURIER_API_KEY', 'TrackCourier.io API key (starts with tc_live_)'],
+    ['DELHIVERY_TOKEN', 'Delhivery API token (optional, leave empty if you don\'t have one)'],
   ];
   for (var i = 0; i < keys.length; i++) {
     var name = keys[i][0];
@@ -63,15 +63,14 @@ function setApiKeys() {
     if (value === 'DELETE') props.deleteProperty(name);
     else if (value) props.setProperty(name, value);
   }
-  // Courier codes may depend on the account, so look them up again next time.
-  Object.keys(CONFIG.COURIERS).forEach(function (k) { props.deleteProperty('TM_CODE_' + k); });
   ui.alert('Saved. Next, use "Test API connections" to check the keys work.');
 }
 
 function testConnections() {
-  var lines = [testDelhiveryConnection_()].concat(testTrackingMoreConnection_());
+  var names = { DELHIVERY: 'Delhivery API', TRACKCOURIER: 'TrackCourier.io', DPWORLD_WEB: 'DP World website' };
+  var lines = [testTrackCourierConnection_(), testDelhiveryConnection_(), ''];
   Object.keys(CONFIG.COURIERS).forEach(function (key) {
-    lines.push(CONFIG.COURIERS[key].label + ' numbers will use: ' + (resolveProvider_(key) === 'DELHIVERY' ? 'Delhivery API' : 'TrackingMore'));
+    lines.push(CONFIG.COURIERS[key].label + ' → ' + names[resolveProvider_(key)]);
   });
   SpreadsheetApp.getUi().alert('Connection test', lines.join('\n'), SpreadsheetApp.getUi().ButtonSet.OK);
 }
@@ -97,19 +96,20 @@ function deleteTriggers_(handlerName) {
 
 // ─── The update itself ──────────────────────────────────────────────────────
 
-/** Which API a courier's numbers go to: 'DELHIVERY' or 'TRACKINGMORE'. */
+/** Where a courier's numbers are tracked: 'DELHIVERY', 'TRACKCOURIER' or 'DPWORLD_WEB'. */
 function resolveProvider_(courierKey) {
   var p = CONFIG.COURIERS[courierKey].provider;
-  if (p === 'AUTO') return getSecret_('DELHIVERY_TOKEN') ? 'DELHIVERY' : 'TRACKINGMORE';
+  if (p === 'AUTO') return getSecret_('DELHIVERY_TOKEN') ? 'DELHIVERY' : 'TRACKCOURIER';
   return p;
 }
 
 /** Ask the right API about a list of tracking IDs that all belong to one courier. */
 function trackCourier_(courierKey, ids) {
   try {
-    return resolveProvider_(courierKey) === 'DELHIVERY'
-      ? trackWithDelhivery_(ids)
-      : trackWithTrackingMore_(courierKey, ids);
+    var provider = resolveProvider_(courierKey);
+    if (provider === 'DELHIVERY') return trackWithDelhivery_(ids);
+    if (provider === 'DPWORLD_WEB') return trackWithDpWorld_(ids);
+    return trackWithTrackCourier_(courierKey, ids);
   } catch (e) {
     // A problem that affects the whole group (bad key, no credits, ...).
     var out = {};
