@@ -27,6 +27,7 @@ updated, with the reason.
 
 | What you see | What it means | What to do |
 |---|---|---|
+| Orders were added far down (e.g. from row 1001) | Older version: rows with only a formula (like the Remarks "Days Remaining" formula) were treated as used | Update `CT_Sync`, then **📦 Courier Tracking → Move orders up to the top of Order Tracking** (one time). Formulas stay where they are. |
 | A "Dispatch" order isn't in Order Tracking | It was ordered before 20-Sep-2026, or its "Ordered On" isn't a date | Check the order's row in Pre CRM. The log lists rows whose date can't be read. |
 | "This row has a Tracking ID but no Order Id" | A row you added by hand (e.g. a test row) | Type its Order Id in column A (the robot then fills the rest), or delete the row. |
 | "No longer a Dispatch order in Pre CRM" | Its remark changed, or it was removed from Pre CRM | The row is kept on purpose. Delete it yourself if it isn't needed. |

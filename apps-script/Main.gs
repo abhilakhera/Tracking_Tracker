@@ -44,6 +44,7 @@ function CT_onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('📦 Courier Tracking')
     .addItem('Sync orders now (Pre CRM → Order Tracking → Review)', 'CT_syncNow')
+    .addItem('Move orders up to the top of Order Tracking', 'CT_moveOrdersToTop')
     .addSeparator()
     .addItem('Update all tracking statuses now', 'CT_updateAllNow')
     .addItem('Update selected rows only', 'CT_updateSelectedRows')

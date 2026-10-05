@@ -198,4 +198,73 @@ scenario('a row inserted in Order Tracking during the sync is not overwritten', 
   assert.ok(t.log().some((m) => m.includes('Rows moved while syncing')), t.log().join('\n'));
 });
 
+// ── 5. Formula-only rows (like a "Days Remaining" Remarks formula filled down) ──
+const daysFormula = (r) => `=Ifs(or(J${r}="Delivered",ISBLANK(L${r})=True),"",True,"")`;
+const blankWithFormula = (r) => ['', '', '', '', '', '', '', '', '', '', '', '', daysFormula(r)];
+scenario('rows that only hold a formula count as empty: orders start at row 2, formulas stay', () => {
+  const t = load({
+    'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'One', phone: 1, remark: 'Dispatch', by: ist(2026, 10, 1) })],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']), blankWithFormula(2), blankWithFormula(3), blankWithFormula(4)],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  const ot = t.tab('Order Tracking');
+  assert.deepStrictEqual([ot[1][0], ot[1][12], ot[1][15]], ['OD1', daysFormula(2), '1']);
+  assert.deepStrictEqual([ot[2][0], ot[2][12]], ['', daysFormula(3)]);
+  assert.strictEqual(ot.length, 4, 'nothing added below');
+});
+
+// ── 6. Moving orders that were added below the formula rows up to the top ──
+scenario('"Move orders up" fixes orders that were added below formula rows', () => {
+  const orderRow = (o, item, extra = {}) => Object.assign([o, ist(2026, 9, 21), 'SKU' + item, 'F' + item, 'Name', 9000000000 + Number(item),
+    '', '', '', '', '', ist(2026, 10, 1), '', '', '', item], extra);
+  const t = load({
+    'Pre CRM': [PRE_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
+      blankWithFormula(2), blankWithFormula(3), blankWithFormula(4), blankWithFormula(5),
+      orderRow('OD1', '1'), orderRow('OD2', '2', { 6: 'TRK2', 7: 'Delhivery', 13: 'Replacement' }), orderRow('OD3', '3')],
+  });
+  const sheet = t.ss.getSheetByName('Order Tracking');
+  sheet.formats['7,2'] = 'dd-mmm-yyyy';
+  const alerts = [];
+  t.ctx.SpreadsheetApp.getUi = () => ({ alert: (m) => alerts.push(m) });
+  t.run('CT_moveOrdersToTop()');
+  assert.deepStrictEqual(alerts, ['Moved 3 row(s) up: they now start at row 2.']);
+  const ot = t.tab('Order Tracking');
+  assert.deepStrictEqual(ot.slice(1, 4).map((r) => [r[0], r[6], r[7], r[13], r[15]]),
+    [['OD1', '', '', '', '1'], ['OD2', 'TRK2', 'Delhivery', 'Replacement', '2'], ['OD3', '', '', '', '3']]);
+  assert.ok(ot[1][1] instanceof Date && ot[1][11] instanceof Date, 'dates moved as dates');
+  assert.strictEqual(sheet.formats['3,2'], 'dd-mmm-yyyy', 'number formats move with the values (OD2: row 7 → row 3)');
+  // The Remarks formulas did not move and were not overwritten.
+  assert.deepStrictEqual(ot.slice(1, 5).map((r) => r[12]), [daysFormula(2), daysFormula(3), daysFormula(4), daysFormula(5)]);
+  // The old rows are now empty.
+  assert.ok(ot.slice(4).every((r) => r.slice(0, 16).every((v, c) => c === 12 || v === '' || v === undefined)), JSON.stringify(ot.slice(4)));
+  // Running it again changes nothing, and a following sync keeps the rows where they are.
+  alerts.length = 0;
+  t.run('CT_moveOrdersToTop()');
+  assert.deepStrictEqual(alerts, ['Orders already start at the top; nothing to move.']);
+});
+
+scenario('"Move orders up" refuses (and changes nothing) when a column mixes formulas and typed values', () => {
+  const t = load({
+    'Pre CRM': [PRE_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']), blankWithFormula(2),
+      ['OD1', '', '', '', '', '', '', '', '', '', '', '', 'typed remark', '', '', '1']],
+  });
+  const before = JSON.stringify(t.tab('Order Tracking'));
+  const alerts = [];
+  t.ctx.SpreadsheetApp.getUi = () => ({ alert: (m) => alerts.push(m) });
+  t.run('CT_moveOrdersToTop()');
+  assert.ok(/Column M mixes formulas and typed values/.test(alerts[0]), alerts[0]);
+  assert.strictEqual(JSON.stringify(t.tab('Order Tracking')), before);
+});
+
+// ── 7. If the sync fails, the reason still appears in the log tab ──
+scenario('a failing sync still writes its reason to the Order Sync Log tab', () => {
+  const t = load({ 'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Review & Rating Data': [RV_HEADER] }); // no Self Ship tab
+  assert.throws(() => t.run('CT_syncNow()'), /Could not find the tab "Self Ship Cases"/);
+  assert.ok(t.log().some((m) => m.includes('ERROR') && m.includes('Could not find the tab "Self Ship Cases"')), t.log().join('\n'));
+  assert.strictEqual(t.props.CT_SYNC_RUNNING_SINCE, undefined);
+});
+
 console.log(`\nAll ${passed} sync scenarios passed`);

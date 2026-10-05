@@ -52,6 +52,91 @@ function CT_scheduleSync_() {
   if (!pending) ScriptApp.newTrigger('CT_delayedSync').timeBased().after(60 * 1000).create();
 }
 
+/**
+ * Menu: "Move orders up to the top". Moves every row of Order Tracking that has data up
+ * into the empty rows below the heading, keeping their order. Cells with formulas (such as
+ * the Remarks "Days Remaining" formula) are never moved or overwritten, so each formula
+ * keeps working on its own row. Safe to run again: if there is no gap, nothing changes.
+ */
+function CT_moveOrdersToTop() {
+  var props = PropertiesService.getScriptProperties();
+  var busy = function (k) { var t = Number(props.getProperty(k)) || 0; return t && Date.now() - t < 10 * 60 * 1000; };
+  if (busy('CT_SYNC_RUNNING_SINCE') || busy('CT_RUNNING_SINCE') || props.getProperty('CT_RESUME_ROW')) {
+    CT_notify_({ interactive: true }, 'An update is running right now. Try again in a few minutes.');
+    return;
+  }
+  props.setProperty('CT_SYNC_RUNNING_SINCE', String(Date.now()));
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = CT_requireSheet_(ss, CT_CONFIG.SHEET_NAME);
+    var result;
+    try {
+      result = CT_moveRowsUp_(sheet, CT_CONFIG.HEADER_ROWS, CT_columnNumber_(CT_SYNC.ORDER_TRACKING.ORDER_ITEM_ID));
+    } catch (e) {
+      result = 'Could not move the rows: ' + e.message;
+    }
+    try { SpreadsheetApp.getUi().alert(result); } catch (e) { CT_notify_({ interactive: true }, result); }
+  } finally {
+    props.deleteProperty('CT_SYNC_RUNNING_SINCE');
+  }
+}
+
+/** Moves rows with data (ignoring formula cells) up to the first rows, columns 1..lastCol. Returns a message. */
+function CT_moveRowsUp_(sheet, headerRows, lastCol) {
+  var first = headerRows + 1;
+  var n = sheet.getLastRow() - headerRows;
+  if (n <= 0) return 'Nothing to move.';
+  var range = sheet.getRange(first, 1, n, lastCol);
+  var values = range.getValues();
+  var formulas = range.getFormulas();
+  var formats = range.getNumberFormats();
+  var hasData = function (r) {
+    return values[r].some(function (v, c) { return formulas[r][c] === '' && CT_cellText_(v instanceof Date ? 'd' : v) !== ''; });
+  };
+  var dataRows = [];
+  for (var r = 0; r < n; r++) if (hasData(r)) dataRows.push(r);
+  if (!dataRows.length) return 'Nothing to move.';
+  if (dataRows[dataRows.length - 1] === dataRows.length - 1) return 'Orders already start at the top; nothing to move.';
+
+  var touched = dataRows[dataRows.length - 1] + 1; // rows 0..touched-1 are rewritten
+  var isEmpty = function (v) { return !(v instanceof Date) && CT_cellText_(v) === ''; };
+
+  // First decide what to do with every column, so nothing is changed if one can't be moved.
+  var toMove = [];
+  for (var c = 0; c < lastCol; c++) {
+    var hasFormula = false;
+    var plainData = false;
+    for (var i = 0; i < touched; i++) {
+      if (formulas[i][c] !== '') hasFormula = true;
+      else if (!isEmpty(values[i][c])) plainData = true;
+    }
+    if (!plainData) continue;          // nothing to move (e.g. a formula-only column like Remarks)
+    if (hasFormula) {
+      throw new Error('Column ' + CT_columnLetter_(c + 1) + ' mixes formulas and typed values, so the rows ' +
+        'cannot be moved automatically. Nothing was changed.');
+    }
+    toMove.push(c);
+  }
+
+  toMove.forEach(function (c) {
+    var newValues = [];
+    var newFormats = [];
+    for (var k = 0; k < touched; k++) {
+      var src = dataRows[k];
+      newValues.push([src === undefined ? '' : values[src][c]]);
+      newFormats.push([src === undefined ? formats[k][c] : formats[src][c]]);
+    }
+    sheet.getRange(first, c + 1, touched, 1).setNumberFormats(newFormats).setValues(newValues);
+  });
+  return 'Moved ' + dataRows.length + ' row(s) up: they now start at row ' + first + '.';
+}
+
+function CT_columnLetter_(n) {
+  var s = '';
+  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
 // ─── The sync ─────────────────────────────────────────────────────────────────
 
 /** Returns true if it ran, false if another sync was already running. */
@@ -67,15 +152,23 @@ function CT_runSync_(options) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var tz = ss.getSpreadsheetTimeZone();
     var log = new CT_SyncLog_(ss);
-    var pre = CT_readPreCrm_(ss, tz, log);
-    var selfShip = CT_readSelfShip_(ss, pre);
-    var ot = CT_syncOrderTracking_(ss, tz, pre, selfShip, log);
-    var rv = CT_syncReviews_(ss, tz, pre, selfShip, log);
-    var summary = 'Order Tracking: ' + ot.added + ' product(s) added, ' + ot.updated + ' updated. ' +
-      'Review & Rating Data: ' + rv.added + ' added, ' + rv.updated + ' updated, ' + rv.removed + ' removed (Self Ship).';
-    log.add('', '', 'INFO', summary);
-    log.flush();
-    CT_notify_(options, summary);
+    try {
+      var pre = CT_readPreCrm_(ss, tz, log);
+      var selfShip = CT_readSelfShip_(ss, pre);
+      var ot = CT_syncOrderTracking_(ss, tz, pre, selfShip, log);
+      var rv = CT_syncReviews_(ss, tz, pre, selfShip, log);
+      var summary = 'Order Tracking: ' + ot.added + ' product(s) added, ' + ot.updated + ' updated. ' +
+        'Review & Rating Data: ' + rv.added + ' added, ' + rv.updated + ' updated, ' + rv.removed + ' removed (Self Ship).';
+      log.add('', '', 'INFO', summary);
+      log.flush();
+      CT_notify_(options, summary);
+    } catch (e) {
+      // Leave a note in the log tab so the problem is visible in the sheet.
+      log.add('', '', 'ERROR', 'The sync stopped: ' + e.message);
+      try { log.flush(); } catch (ignore) { /* nothing more we can do */ }
+      CT_notify_(options, 'The sync stopped: ' + e.message);
+      throw e;
+    }
     return true;
   } finally {
     props.deleteProperty('CT_SYNC_RUNNING_SINCE');
@@ -349,9 +442,14 @@ function CT_readTable_(sheet, headerRows, columns) {
   var n = Math.max(0, lastRow - headerRows);
   var values = n ? sheet.getRange(firstRow, minCol, n, maxCol - minCol + 1).getValues() : [];
   var shown = n ? sheet.getRange(firstRow, minCol, n, maxCol - minCol + 1).getDisplayValues() : [];
-  // Ignore empty rows at the bottom.
+  var formulas = n ? sheet.getRange(firstRow, minCol, n, maxCol - minCol + 1).getFormulas() : [];
+  // Ignore empty rows at the bottom. Cells with a formula (like a "Days Remaining" column
+  // filled down in advance) don't count: such rows are ready-made rows waiting for data.
   var count = values.length;
-  while (count > 0 && shown[count - 1].every(function (v) { return CT_cellText_(v) === ''; })) count--;
+  var rowIsEmpty = function (r) {
+    return shown[r].every(function (v, c) { return formulas[r][c] !== '' || CT_cellText_(v) === ''; });
+  };
+  while (count > 0 && rowIsEmpty(count - 1)) count--;
   return {
     firstRow: firstRow,
     count: count,
