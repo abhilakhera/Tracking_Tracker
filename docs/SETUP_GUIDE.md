@@ -8,20 +8,53 @@ changes the **Order Tracking** tab, and it only ever touches its own automatic t
 
 ---
 
-## Before you start: check the "Order Tracking" tab
+## What fills what
 
-| Column | Heading | Who fills it |
+**Order Tracking** (one row per product):
+
+| Column | Heading | Filled by |
 |---|---|---|
-| G | Tracking ID | You |
-| H | Courier Partner | You |
-| I | Brief Status | Robot: just "Delivered", "In Transit", "Out for Delivery", … |
-| J | Tracking Status | Robot: the full latest status |
-| K | Status Date | Robot: the date of that status (a real date) |
+| A–F | Order Id, Order Date, SKU, FSN, Customer Name, Contact Number | Robot, from **Pre CRM** |
+| G | Tracking ID | **You** |
+| H | Courier Partner | **You** |
+| I | Brief Status | Robot: just "Delivered", "In Transit", … |
+| J | Tracking Status | Robot: the full latest status from the courier |
+| K | Status Date | Robot: the date of that status |
+| L | Delivery By Date | Robot, from **Pre CRM** |
+| M | Remarks | **You** |
+| N–O | Return Request Type, Refund Status | Robot, from **Self Ship Cases** |
+| P | Order Item Id | Robot: tells the robot which product each row is. **Don't edit it.** |
 
-- The tab name must be exactly **Order Tracking** (same capitals and spaces).
-- Row 1 holds the headings; parcels start in row 2.
-- If you already have statuses in column J, the robot fills in Brief Status (column I)
-  for those rows by itself.
+- Orders come in from **Pre CRM** when they were **ordered on or after 20-Sep-2026** and
+  their **Remarks** contain **"Dispatch"**. New products are added at the bottom.
+- Rows are **never deleted**. If an order stops being "Dispatch", its row stays, and the
+  **Order Sync Log** tab lists it so you can delete it yourself.
+- Columns G, H and M are **never** changed by the robot.
+
+**Review & Rating Data**: a product is added **2 days after its Status Date** once its Brief Status
+is **Delivered**, unless the order is in **Self Ship Cases**. If an order later appears in Self
+Ship Cases, it is **removed** from Review & Rating Data straight away. The robot fills A–G
+(and M, Order Item Id); your team's columns **H–L are never touched**.
+
+**When it runs:**
+- Courier tracking: every morning between 8:00 and 8:30.
+- Order sync: every hour, about a minute after you edit **Pre CRM**, and straight away when
+  you edit **Self Ship Cases**. Also from the menu: **📦 Courier Tracking → Sync orders now**.
+
+---
+
+## Already set up the tracker before? Do only this
+
+1. In Apps Script, open **`CT_Config`**, select everything (**Ctrl + A**), and paste the new
+   `apps-script/Config.gs` over it. If you had changed a number in it (for example
+   `TRACKCOURIER_REQUESTS_PER_MINUTE`), change it again.
+2. Do the same for **`CT_Main`** with the new `apps-script/Main.gs`.
+3. Add one new file named **`CT_Sync`** with `apps-script/Sync.gs`.
+4. Press **Ctrl + S**, choose **`CT_setup`** at the top and click **▶ Run** (allow the new
+   permission if asked).
+5. Refresh the spreadsheet and click **📦 Courier Tracking → Sync orders now**.
+
+The other files (`CT_Utils`, `CT_TrackCourier`, `CT_Delhivery`, `CT_DPWorld`) stay as they are.
 
 ---
 
@@ -30,7 +63,7 @@ changes the **Order Tracking** tab, and it only ever touches its own automatic t
 **Step 1.** Open the main spreadsheet → **Extensions → Apps Script**.
 You'll see your existing script files on the left. **Leave them exactly as they are.**
 
-**Step 2.** Add 6 new files. For **each** row in this table:
+**Step 2.** Add 7 new files. For **each** row in this table:
 1. Click the **+** next to "Files" → **Script**.
 2. Type the name from the right-hand column, then press Enter.
 3. Open the matching file on GitHub, click the **copy** button (two small squares, top
@@ -44,6 +77,7 @@ You'll see your existing script files on the left. **Leave them exactly as they 
 | `apps-script/TrackCourier.gs` | `CT_TrackCourier` |
 | `apps-script/Delhivery.gs` | `CT_Delhivery` |
 | `apps-script/DPWorld.gs` | `CT_DPWorld` |
+| `apps-script/Sync.gs` | `CT_Sync` |
 
 > ℹ️ **Leave `appsscript.json` alone.** Your spreadsheet already has this settings file, and
 > it is shared with your other scripts. You don't need to copy ours or change yours.
@@ -69,10 +103,12 @@ You'll see your existing script files on the left. **Leave them exactly as they 
 
 At the bottom, the *Execution log* should say
 **"✅ Courier Tracking is set up."** This step:
-- adds the **📦 Courier Tracking** menu to the spreadsheet, and
-- switches on the **daily update at 8 AM**.
+- adds the **📦 Courier Tracking** menu to the spreadsheet,
+- switches on the **daily tracking update at 8 AM**, and
+- switches on the **order sync** (every hour and after edits).
 
-If it says *Could not find the tab "Order Tracking"*, check the tab's name and run it again.
+If it says *Could not find the tab "…"*, check that tab's name (capitals and spaces must match)
+and run it again.
 
 **Step 6.** Go back to the spreadsheet and **refresh the page** (F5). After a few seconds the
 **📦 Courier Tracking** menu appears at the top.

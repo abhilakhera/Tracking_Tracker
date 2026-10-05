@@ -23,12 +23,25 @@ updated, with the reason.
 | Dates are one day off | Your sheet isn't set to Indian time | **File → Settings → Time zone → (GMT+05:30) India Standard Time**. |
 | "TrackCourier.io does not know the courier name …" | A courier name in `CT_Config` is misspelt | Fix `trackCourierSlug` in `CT_Config`: it must be `delhivery` or `safexpress`. |
 
+## Order sync (the "Order Sync Log" tab)
+
+| What you see | What it means | What to do |
+|---|---|---|
+| A "Dispatch" order isn't in Order Tracking | It was ordered before 20-Sep-2026, or its "Ordered On" isn't a date | Check the order's row in Pre CRM. The log lists rows whose date can't be read. |
+| "This row has a Tracking ID but no Order Id" | A row you added by hand (e.g. a test row) | Type its Order Id in column A (the robot then fills the rest), or delete the row. |
+| "No longer a Dispatch order in Pre CRM" | Its remark changed, or it was removed from Pre CRM | The row is kept on purpose. Delete it yourself if it isn't needed. |
+| "The same Order Item Id is on more than one row" | Pre CRM has the same product twice | Delete the extra row in Pre CRM. |
+| A delivered order isn't in Review & Rating Data yet | It appears 2 days after its Status Date | Wait; or check it isn't in Self Ship Cases. |
+| Changes in Pre CRM don't show up | The sync runs about a minute after an edit, and every hour | Wait a minute, or **📦 Courier Tracking → Sync orders now**. |
+
 ## Small changes you can make in `CT_Config`
 
 | Want… | Change this line |
 |---|---|
 | A different tab | `SHEET_NAME: 'Order Tracking',` (your tab name) |
-| Different columns | the letters under `COLUMNS:` |
+| Different columns | the letters under `COLUMNS:` (tracking) or `CT_SYNC` (order sync) |
+| A different start date for orders | `INCLUDE_ORDERS_FROM: '2026-09-20',` (year-month-day) |
+| Review & Rating after more/fewer days | `REVIEW_AFTER_DAYS: 2,` |
 | No Brief Status column | `BRIEF_STATUS: '',` |
 | Date shown as 04/10/2026 | `DATE_FORMAT: 'dd/mm/yyyy',` |
 | Shorter status text (no place name) | `SHOW_LOCATION: false,` |

@@ -20,12 +20,21 @@
  */
 function CT_setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  CT_dataSheet_(ss); // stops here with a clear message if the tab name is wrong
+  // Stop here with a clear message if a tab name is wrong.
+  CT_dataSheet_(ss);
+  [CT_SYNC.PRE_CRM.SHEET, CT_SYNC.SELF_SHIP.SHEET, CT_SYNC.REVIEW.SHEET].forEach(function (n) { CT_requireSheet_(ss, n); });
+
   CT_deleteTriggers_('CT_onOpen');
   ScriptApp.newTrigger('CT_onOpen').forSpreadsheet(ss).onOpen().create();
+  CT_deleteTriggers_('CT_onEdit');
+  ScriptApp.newTrigger('CT_onEdit').forSpreadsheet(ss).onEdit().create();
+  CT_deleteTriggers_('CT_hourlySync');
+  ScriptApp.newTrigger('CT_hourlySync').timeBased().everyHours(CT_SYNC.SYNC_EVERY_HOURS).create();
   CT_installDailyTrigger_();
   console.log('✅ Courier Tracking is set up. Reload the spreadsheet to see the "📦 Courier Tracking" menu. ' +
-    'Daily update: around ' + CT_CONFIG.DAILY_UPDATE_HOUR + ':00 (' + CT_CONFIG.TIMEZONE + ').');
+    'Daily tracking update: around ' + CT_CONFIG.DAILY_UPDATE_HOUR + ':00 (' + CT_CONFIG.TIMEZONE + '). ' +
+    'Order sync: every ' + CT_SYNC.SYNC_EVERY_HOURS + ' hour(s) and after edits to "' + CT_SYNC.PRE_CRM.SHEET +
+    '" or "' + CT_SYNC.SELF_SHIP.SHEET + '".');
 }
 
 // ─── Menu ───────────────────────────────────────────────────────────────────
@@ -34,6 +43,8 @@ function CT_setup() {
 function CT_onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('📦 Courier Tracking')
+    .addItem('Sync orders now (Pre CRM → Order Tracking → Review)', 'CT_syncNow')
+    .addSeparator()
     .addItem('Update all tracking statuses now', 'CT_updateAllNow')
     .addItem('Update selected rows only', 'CT_updateSelectedRows')
     .addSeparator()
@@ -60,8 +71,13 @@ function CT_updateSelectedRows() {
   CT_runUpdate_({ interactive: true, onlyRows: rows, ignoreFinished: true });
 }
 
-/** Called by the daily trigger. */
+/** Called by the daily trigger: bring in new orders first, then track. */
 function CT_dailyUpdate() {
+  try {
+    CT_runSync_({});
+  } catch (e) {
+    console.error('Order sync failed before the daily tracking update: ' + e.message);
+  }
   CT_runUpdate_({});
 }
 

@@ -24,8 +24,16 @@ Every morning at 8 AM the robot:
 2. asks that courier "where is this parcel now?",
 3. writes **Brief Status** (I), the full **Tracking Status** (J) and the **date** of that update (K).
 
-It only ever changes the **Order Tracking** tab, and it is built to sit safely next to the other
-scripts in your spreadsheet (everything in it starts with `CT_`).
+It also keeps the tabs in step automatically:
+
+- **Pre CRM → Order Tracking:** every "Dispatch" order from 20-Sep-2026 onwards, one row per product.
+- **Self Ship Cases → Order Tracking:** Return Request Type and Refund Status.
+- **Order Tracking → Review & Rating Data:** delivered products, 2 days after delivery, except
+  Self Ship cases (which are removed straight away).
+
+Columns you or your team fill in (Tracking ID, Courier, Remarks, and the call/review columns) are
+never changed, and nothing is written outside these tabs and the robot's two log tabs. Everything
+starts with `CT_`, so it sits safely next to the other scripts in your spreadsheet.
 
 ## Words you'll see
 
@@ -62,6 +70,7 @@ apps-script/          code to paste into Extensions → Apps Script
   TrackCourier.gs     TrackCourier.io connector (Safexpress, Delhivery)
   Delhivery.gs        Delhivery's own API (optional, needs a Delhivery token)
   DPWorld.gs          DP World reader (the data behind DP World's tracking page)
+  Sync.gs             Pre CRM → Order Tracking → Review & Rating Data
   Utils.gs            date reading, courier-name matching
   appsscript.json     permissions (for a fresh project only; keep your own in a sheet with other scripts)
 tests/                offline tests: npm test

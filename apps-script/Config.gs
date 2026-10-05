@@ -107,3 +107,55 @@ var CT_CONFIG = {
   MAX_RUNTIME_MS: 4.5 * 60 * 1000,
   MAX_AUTO_RESUMES: 50,
 };
+
+/**
+ * ============================================================================
+ *  ORDER SYNC: SETTINGS (Pre CRM → Order Tracking → Review & Rating Data)
+ * ============================================================================
+ *  Letters are the columns in each tab. Row 1 of every tab holds the headings.
+ */
+var CT_SYNC = {
+  // Where orders come from (filled in by you).
+  PRE_CRM: {
+    SHEET: 'Pre CRM',
+    HEADER_ROWS: 1,
+    SKU: 'A', FSN: 'B', CATEGORY: 'D', ORDER_ID: 'E', ORDER_ITEM_ID: 'F', ORDERED_ON: 'G',
+    NAME: 'J', PHONE: 'N', REMARKS: 'Q', DELIVERY_BY: 'S',
+  },
+
+  // Which Pre CRM rows go to Order Tracking: ordered on or after this date
+  // (year-month-day) AND the Remarks column contains this word (capitals don't matter).
+  INCLUDE_ORDERS_FROM: '2026-09-20',
+  REMARK_WORD: 'dispatch',
+
+  // Order Tracking (tab name is CT_CONFIG.SHEET_NAME). The robot fills these columns.
+  // G Tracking ID, H Courier and M Remarks are yours and are never changed.
+  // ORDER_ITEM_ID: the robot remembers which product each row is for here.
+  ORDER_TRACKING: {
+    ORDER_ID: 'A', ORDER_DATE: 'B', SKU: 'C', FSN: 'D', NAME: 'E', PHONE: 'F',
+    DELIVERY_BY: 'L', RETURN_TYPE: 'N', REFUND_STATUS: 'O', ORDER_ITEM_ID: 'P',
+  },
+
+  // Self Ship Cases (filled in by you).
+  SELF_SHIP: {
+    SHEET: 'Self Ship Cases',
+    HEADER_ROWS: 1,
+    ORDER_ID: 'C', ORDER_ITEM_ID: 'D', REQUEST_TYPE: 'K', REFUND_STATUS: 'S',
+  },
+
+  // Review & Rating Data. The robot fills A-G and M; H-L are your team's and are never changed.
+  REVIEW: {
+    SHEET: 'Review & Rating Data',
+    HEADER_ROWS: 1,
+    ORDER_ID: 'A', ORDER_DATE: 'B', FSN: 'C', CATEGORY: 'D', NAME: 'E', PHONE: 'F',
+    DELIVERY_DATE: 'G', ORDER_ITEM_ID: 'M',
+  },
+  // A delivered product appears in Review & Rating Data this many days after its Status Date.
+  REVIEW_AFTER_DAYS: 2,
+
+  // The sync also runs on its own every N hours (1, 2, 4, 6, 8 or 12).
+  SYNC_EVERY_HOURS: 1,
+
+  DATE_FORMAT: 'dd-mmm-yyyy',
+  LOG_SHEET_NAME: 'Order Sync Log',
+};

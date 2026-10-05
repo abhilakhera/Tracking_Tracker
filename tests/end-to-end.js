@@ -10,37 +10,11 @@ const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Main.gs'];
 const G = 6, I = 8, J = 9, K = 10; // 0-based column indexes in a row array
 
-// ── fake spreadsheet ──
-function makeSheet(name, rows, ss, writes) {
-  const data = rows.map((r) => r.slice());
-  const formats = {};
-  const cell = (r, c) => { while (data.length < r) data.push([]); return data[r - 1][c - 1]; };
-  return {
-    data, formats,
-    getName: () => name,
-    getLastRow: () => data.length,
-    getRange(r, c, nr = 1, nc = 1) {
-      const sheet = this;
-      return {
-        getSheet: () => sheet,
-        getRow: () => r,
-        getLastRow: () => r + nr - 1,
-        getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => cell(r + i, c + j) ?? '')),
-        setValues(v) {
-          v.forEach((row, i) => row.forEach((x, j) => { cell(r + i, 1); data[r + i - 1][c + j - 1] = x; writes.push(`${name}!R${r + i}C${c + j}`); }));
-          return this;
-        },
-        setNumberFormat(f) { formats[`${r},${c}`] = f; return this; },
-        setFontWeight() { return this; },
-      };
-    },
-    clearContents() { data.length = 0; },
-    getParent: () => ss,
-  };
-}
+const { makeSpreadsheet, makeScriptApp, Utilities } = require('./fake-sheet');
+
 const row = (id, courier, brief = '', status = '', date = '') => ['', '', '', '', '', '', id, courier, brief, status, date];
 const json = (code, body) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(body) });
 const tcAnswer = (state, activity, place) => json(200, { success: true, data: { ShipmentState: state.toLowerCase().replace(/ /g, ''), MostRecentStatus: state,
@@ -49,19 +23,18 @@ const delivered = (place) => tcAnswer('Delivered', 'Delivered', place);
 
 /** Load the robot into a sandbox with a fake spreadsheet and fake APIs. */
 function setup(rows, props, trackCourierReply, extra = {}) {
-  const writes = [];
-  const ss = {
-    getSheets: () => sheets,
-    getSheetByName: (n) => sheets.find((s) => s.getName() === n) || null,
-    insertSheet: (n) => { const s = makeSheet(n, [], ss, writes); sheets.push(s); return s; },
-    getSpreadsheetTimeZone: () => 'Asia/Kolkata',
-    toast() {},
-  };
   const header = ['', '', '', '', '', '', 'Tracking ID', 'Courier Partner', 'Brief Status', 'Tracking Status', 'Status Date'];
-  // Another tab that must never be touched.
-  const dashboard = makeSheet('Dashboard', [['Order', 'Tracking'], ['x', '1111111111111']], ss, writes);
-  const main = makeSheet('Order Tracking', [header, ...rows], ss, writes);
-  const sheets = [dashboard, main];
+  const ss = makeSpreadsheet({
+    'Dashboard': [['Order', 'Tracking'], ['x', '1111111111111']], // another tab that must never be touched
+    'Order Tracking': [header, ...rows],
+    'Pre CRM': [['SKU Code']],
+    'Self Ship Cases': [['SKU']],
+    'Review & Rating Data': [['Order ID']],
+  });
+  const writes = ss.writes;
+  const dashboard = ss.getSheetByName('Dashboard');
+  const main = ss.getSheetByName('Order Tracking');
+  const sheets = ss.getSheets();
   const calls = [];
   const triggers = (extra.triggers || []).slice(); // triggers that already exist (other scripts)
   let slept = 0;
@@ -84,18 +57,6 @@ function setup(rows, props, trackCourierReply, extra = {}) {
     assert.ok(m, url);
     return trackCourierReply(m[1], decodeURIComponent(m[2]));
   }
-  // Records every trigger builder call, e.g. { handler, everyDays: 1, atHour: 8, ... }.
-  const newTrigger = (handler) => {
-    const spec = { handler };
-    const b = {
-      timeBased: () => b, forSpreadsheet: () => { spec.spreadsheet = true; return b; }, onOpen: () => { spec.onOpen = true; return b; },
-      after: (ms) => { spec.after = ms; return b; }, everyDays: (n) => { spec.everyDays = n; return b; },
-      atHour: (h) => { spec.atHour = h; return b; }, nearMinute: (m) => { spec.nearMinute = m; return b; },
-      inTimezone: (tz) => { spec.tz = tz; return b; },
-      create: () => { triggers.push({ ...spec, getHandlerFunction: () => handler }); return b; },
-    };
-    return b;
-  };
   const ctx = vm.createContext({
     console: { log() {}, error: console.error },
     SpreadsheetApp: {
@@ -107,17 +68,8 @@ function setup(rows, props, trackCourierReply, extra = {}) {
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
     // Other scripts may hold Google's shared script lock; the tracker must not need it.
     LockService: { getScriptLock: () => { throw new Error('the tracker must not use the shared script lock'); } },
-    ScriptApp: {
-      getProjectTriggers: () => triggers.slice(),
-      deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1),
-      newTrigger,
-    },
-    Utilities: {
-      sleep: (ms) => { slept += ms; }, // don't really wait in tests
-      // Asia/Kolkata only, enough for the test
-      formatDate: (d) => new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 10),
-      parseDate: (s) => new Date(Date.parse(s + 'T00:00:00+05:30')),
-    },
+    ScriptApp: makeScriptApp(triggers),
+    Utilities: { ...Utilities, sleep: (ms) => { slept += ms; } }, // don't really wait in tests
   });
   for (const f of FILES) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
@@ -163,8 +115,10 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   assert.strictEqual(d[8][J], '');
   // Status Date column K holds dates
   assert.strictEqual(t.formats['2,11'], 'dd-mmm-yyyy');
-  // Only the "Order Tracking" tab (columns I-K of updated rows) and the log tab are written.
-  assert.ok(t.writes.every((w) => /^Order Tracking!R\d+C(9|10|11)$/.test(w) || w.startsWith('Courier Tracking Log!')), t.writes.join(' '));
+  // Tracking writes only columns I-K of updated rows (plus the log tabs; the order sync that runs
+  // first only adds the "Order Item Id" headings).
+  assert.ok(t.writes.every((w) => /^Order Tracking!R\d+C(9|10|11)$/.test(w) || /Log!/.test(w) ||
+    ['Order Tracking!R1C16', 'Review & Rating Data!R1C13'].includes(w)), t.writes.join(' '));
   assert.deepStrictEqual(t.dashboard.data, [['Order', 'Tracking'], ['x', '1111111111111']]);
   assert.ok(!t.writes.some((w) => w.startsWith('Order Tracking!R6C')), 'the delivered row must not be rewritten');
   const msgs = t.log();
@@ -268,12 +222,14 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   const mine = t.triggers.filter((x) => x.handler.startsWith('CT_')).map(({ getHandlerFunction, ...spec }) => spec);
   assert.deepStrictEqual(mine, [
     { handler: 'CT_onOpen', spreadsheet: true, onOpen: true },
+    { handler: 'CT_onEdit', spreadsheet: true, onEdit: true },
+    { handler: 'CT_hourlySync', everyHours: 1 },
     { handler: 'CT_dailyUpdate', everyDays: 1, atHour: 8, nearMinute: 15, tz: 'Asia/Kolkata' },
   ]);
   assert.deepStrictEqual(t.triggers.filter((x) => !x.handler.startsWith('CT_')).map((x) => x.handler), ['theirDailyReport', 'onEditHandler']);
   t.run('CT_turnOffDailyUpdate');
-  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['theirDailyReport', 'onEditHandler', 'CT_onOpen']);
-  console.log('Scenario 6 (setup and daily 8 AM trigger, other triggers untouched): OK');
+  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['theirDailyReport', 'onEditHandler', 'CT_onOpen', 'CT_onEdit', 'CT_hourlySync']);
+  console.log('Scenario 6 (setup: menu, edit, hourly sync and daily 8 AM triggers; other triggers untouched): OK');
 }
 
 // ── Scenario 7: "Update selected rows" only works on the Order Tracking tab ──
