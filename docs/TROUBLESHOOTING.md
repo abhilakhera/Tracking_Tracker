@@ -13,11 +13,12 @@ updated, with the reason.
 | "Stopped at row … after 50 automatic continuations" | Something kept blocking it, usually the monthly limit | Check your TrackCourier.io plan. The next scheduled update tries again. |
 | "Courier name not recognised" | Column H has a spelling the robot doesn't know, e.g. "Delhivry" | Fix the spelling in the cell. |
 | "found no shipment with this number" | The courier doesn't know this number | Check the number on the courier's website. Very new parcels may show up only after pickup. |
-| "DP World tracking is not connected yet" | Expected for now | See Part 6 of [SETUP_GUIDE.md](SETUP_GUIDE.md). |
+| "DP World has no shipment with this docket number" | DP World doesn't know this docket | Check the number on DP World's tracking page. |
+| "DP World website replied HTTP …" on **every** DP World row, for more than a day | DP World changed their website | The DP World reader (`DPWorld.gs`) needs updating. Send the message from the Tracking Log. |
 | "Paused at row … (Google time limit)" | Very big sheet; Google allows 6 minutes per run | Nothing; it continues by itself a minute later. |
 | Column J shows numbers like 46298 | The column's format was changed | Select column J → **Format → Number → Date**. |
 | Dates are one day off | Your sheet isn't set to Indian time | **File → Settings → Time zone → (GMT+05:30) India Standard Time**. |
-| Safexpress rows all say "found no shipment" | TrackCourier.io may use a different name for Safexpress | Send me the message from the Tracking Log. The name is set in `Config.gs` (`trackCourierSlug`). |
+| "TrackCourier.io does not know the courier name …" | A courier name in `Config.gs` is misspelt | Fix `trackCourierSlug` in `Config.gs`: it must be `delhivery` or `safexpress`. |
 
 ## Small changes you can make in `Config.gs`
 

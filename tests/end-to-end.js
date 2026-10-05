@@ -52,6 +52,13 @@ function setup(rows, props, trackCourierReply) {
       assert.strictEqual(opts.headers.Authorization, 'Token DTOKEN');
       return json(200, { ShipmentData: [{ Shipment: { AWB: '1111111111111', Status: { Status: 'In Transit', StatusDateTime: '2026-10-03T23:30:00', StatusLocation: 'Pune_Hub', Instructions: 'Bag received' } } }] });
     }
+    if (url.startsWith('https://api-fr.cargoes.com/track/v4?transportMode=express&trackingId=')) {
+      const ids = decodeURIComponent(url.split('trackingId=')[1]).split(',');
+      const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'dpworld-1846272584.json'), 'utf8'));
+      return json(200, { status: 'success', data: {
+        trackings: ids.includes('1846272584') ? fixture.data.trackings : [],
+        failedTrackings: ids.filter((id) => id !== '1846272584'), skippedTrackings: [] } });
+    }
     assert.strictEqual(opts.headers['X-API-Key'], 'TCKEY');
     const m = url.match(/^https:\/\/api\.trackcourier\.io\/v1\/track\?courier=([a-z]+)&tracking_number=(.+)$/);
     assert.ok(m, url);
@@ -89,14 +96,15 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   const t = setup([
     row('1111111111111', 'Delhivery'),
     row('SX9001', 'Safexpress'),
-    row('DPW777', 'DP World'),
+    row(1846272584, 'DP World'),           // typed as a number in the sheet
+    row('DPW777', 'DPWorld'),
     row('2222222222222', 'delhivery', 'Delivered', 'old'),
     row('', 'Delhivery'),
     row('X1', 'Blue Dart'),
     row('SX9002', 'Safe Express'),
   ], { DELHIVERY_TOKEN: 'DTOKEN', TRACKCOURIER_API_KEY: 'TCKEY' }, (slug, id) => {
     assert.strictEqual(slug, 'safexpress');
-    return id === 'SX9001' ? delivered('Chennai') : json(404, { message: 'not found' });
+    return id === 'SX9001' ? delivered('Chennai') : json(404, { success: false, error: { code: 'TRACKING_NOT_FOUND', message: 'Tracking number not found' } });
   });
   t.run('scheduledTrackingUpdate');
   const d = t.data;
@@ -106,18 +114,22 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   // Safexpress via TrackCourier.io
   assert.strictEqual(d[2][8], 'Delivered (Chennai)');
   assert.strictEqual(iso(d[2][9]), '2026-10-01T18:30:00.000Z');
-  // DP World not connected yet → left blank, explained in the log
-  assert.strictEqual(d[3][8], '');
+  // DP World read from DP World's tracking data
+  assert.strictEqual(d[3][8], 'Delivered (Anantapur)');
+  assert.strictEqual(iso(d[3][9]), '2026-09-29T18:30:00.000Z');
+  // unknown DP World docket → left blank, explained in the log
+  assert.strictEqual(d[4][8], '');
   // already delivered row untouched
-  assert.strictEqual(d[4][8], 'Delivered');
-  assert.strictEqual(d[4][9], 'old');
+  assert.strictEqual(d[5][8], 'Delivered');
+  assert.strictEqual(d[5][9], 'old');
   // unknown Safexpress number → left blank, explained in the log
-  assert.strictEqual(d[7][8], '');
+  assert.strictEqual(d[8][8], '');
   assert.strictEqual(t.formats['2,10'], 'dd-mmm-yyyy');
   const msgs = t.log();
-  assert.ok(msgs.some((m) => m.startsWith('7 ERROR Courier name not recognised')), msgs.join('\n'));
-  assert.ok(msgs.some((m) => m.startsWith('4 ERROR DP World tracking is not connected yet')), msgs.join('\n'));
-  assert.ok(msgs.some((m) => m.startsWith('8 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
+  assert.ok(msgs.some((m) => m.startsWith('8 ERROR Courier name not recognised')), msgs.join('\n'));
+  assert.ok(msgs.some((m) => m.startsWith('5 ERROR DP World has no shipment with this docket')), msgs.join('\n'));
+  assert.ok(msgs.some((m) => m.startsWith('9 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
+  assert.strictEqual(t.calls.filter((c) => c.includes('cargoes.com')).length, 1, 'both DP World dockets in one request');
   assert.ok(!t.calls.some((c) => c.includes('2222222222222')), 'delivered row should not be re-checked');
   // Free plan = 10 requests/minute → the 2nd TrackCourier request waits ~6 s.
   assert.ok(t.slept() >= 5000, 'requests should be paced, slept ' + t.slept() + ' ms');

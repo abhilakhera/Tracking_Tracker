@@ -68,7 +68,7 @@ function setApiKeys() {
 
 function testConnections() {
   var names = { DELHIVERY: 'Delhivery API', TRACKCOURIER: 'TrackCourier.io', DPWORLD_WEB: 'DP World website' };
-  var lines = [testTrackCourierConnection_(), testDelhiveryConnection_(), ''];
+  var lines = [testTrackCourierConnection_(), testDelhiveryConnection_(), testDpWorldConnection_(), ''];
   Object.keys(CONFIG.COURIERS).forEach(function (key) {
     lines.push(CONFIG.COURIERS[key].label + ' → ' + names[resolveProvider_(key)]);
   });

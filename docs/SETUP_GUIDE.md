@@ -66,14 +66,17 @@ Wait a few seconds. A new menu **📦 Courier Tracking** appears at the top.
 ## Part 3: Try it
 
 **Step 11.** **📦 Courier Tracking → Test API connections.**
-You should see **TrackCourier.io: ✅ connected**.
+You should see **TrackCourier.io: ✅ connected** and **DP World website: ✅ reachable**.
+(This test doesn't use any of your monthly TrackCourier.io requests.)
 
 **Step 12.** **📦 Courier Tracking → Update all tracking statuses now.**
 Wait until the small message at the bottom-right says it's finished.
 
-Columns **I** and **J** are now filled for Delhivery and Safexpress rows.
+Columns **I** and **J** are now filled for Delhivery, Safexpress and DP World rows.
 A new tab, **Tracking Log**, lists any row that couldn't be updated and why.
-For now this includes the DP World rows (see Part 5).
+
+> On the free TrackCourier.io plan the robot checks 10 parcels a minute, so a long sheet
+> takes a while. It keeps going by itself in the background; you can close the sheet.
 
 **Step 13.** **📦 Courier Tracking → Turn ON automatic updates.**
 The robot now runs every 12 hours by itself, even when the sheet is closed. 🎉
@@ -115,12 +118,16 @@ and simply continues by itself if it needs more time.
 
 ---
 
-## Part 6: DP World (being set up)
+## Part 6: DP World
 
-TrackCourier.io doesn't track DP World, so the robot will read **DP World's own tracking page**
-(<https://www.logistics.dpworld.com/tracking/in/express>), the same page you use yourself.
-That part is still being built. Until it's ready, nothing breaks: DP World rows stay as they
-are and are listed in the Tracking Log tab.
+DP World needs **nothing from you**: no key, no account, no cost. The robot reads the same
+information that DP World's tracking page (<https://www.logistics.dpworld.com/tracking/in/express>)
+shows when you type a docket number.
+
+One thing to know: this is the data behind DP World's website, not an official service for
+programs. If DP World redesigns their website, DP World rows may stop updating, and the
+Tracking Log tab will say so. If that happens, ask for the robot to be updated, or ask
+DP World for official API access.
 
 ---
 

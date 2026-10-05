@@ -38,7 +38,7 @@ Every 12 hours (you can change this) the robot:
 |---|---|---|
 | Delhivery | TrackCourier.io (your key), or Delhivery directly if you get a free Delhivery token | ✅ Ready |
 | Safexpress | TrackCourier.io (your key) | ✅ Ready |
-| DP World | DP World's own tracking website (free) | ⏳ Needs one more piece of info, see below |
+| DP World | DP World's own tracking page (free, no key needed) | ✅ Ready |
 
 ## How to install it
 
@@ -58,7 +58,7 @@ apps-script/          code to paste into Extensions → Apps Script
   Main.gs             menu, reading/writing the sheet, scheduling
   TrackCourier.gs     TrackCourier.io connector (Safexpress, Delhivery)
   Delhivery.gs        Delhivery's own API (optional, needs a Delhivery token)
-  DPWorld.gs          DP World website reader (waiting for page details)
+  DPWorld.gs          DP World reader (the data behind DP World's tracking page)
   Utils.gs            date reading, courier-name matching
   appsscript.json     timezone (India) and permissions
 tests/                offline tests: npm test

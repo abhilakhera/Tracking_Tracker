@@ -86,6 +86,7 @@ var CONFIG = {
   // API addresses. You don't need to change these.
   DELHIVERY_BASE_URL: 'https://track.delhivery.com',
   TRACKCOURIER_BASE_URL: 'https://api.trackcourier.io/v1',
+  DPWORLD_TRACKING_URL: 'https://api-fr.cargoes.com/track/v4', // what DP World's tracking page uses
 
   // TrackCourier.io allows a set number of requests per minute, depending on your plan
   // (Free: 10, Starter: 60, Pro: 300). Set this to your plan's number.

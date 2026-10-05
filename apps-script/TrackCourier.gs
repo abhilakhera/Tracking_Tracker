@@ -57,23 +57,38 @@ function trackWithTrackCourier_(jobs) {
   return results;
 }
 
-/** Turn one HTTP reply into { status, date } or { error }. Throws for problems that affect every row. */
+/**
+ * Turn one HTTP reply into { status, date } or { error }. Throws for problems that affect
+ * every row. Errors look like { "success": false, "error": { "code": "...", "message": "..." } }.
+ */
 function handleTrackCourierResponse_(code, body, slug) {
   var json = null;
   try { json = JSON.parse(body); } catch (e) { /* handled below */ }
-  var apiMessage = json && (json.message || json.error || json.Message || json.Error);
-  apiMessage = apiMessage ? shorten_(typeof apiMessage === 'string' ? apiMessage : JSON.stringify(apiMessage)) : shorten_(body);
+  var err = (json && json.error) || {};
+  if (typeof err === 'string') err = { message: err };
+  var errCode = String(err.code || '');
+  var apiMessage = shorten_(err.message || (json && json.message) || body);
 
   if (code === 401 || code === 403) throw new Error('TrackCourier.io rejected the API key (HTTP ' + code + '): ' + apiMessage);
-  if (code === 402) throw new Error('TrackCourier.io: monthly limit of your plan reached (' + apiMessage + '). Upgrade the plan or wait for next month.');
-  if (code === 404) return { error: 'TrackCourier.io found no shipment with this number (courier "' + slug + '"). ' + apiMessage };
-  if (code !== 200 || !json) return { error: 'TrackCourier.io HTTP ' + code + ': ' + apiMessage };
+  if (code === 402) {
+    if (errCode === 'ACCOUNT_NEEDS_ATTENTION') throw new Error('TrackCourier.io says your account needs attention: ' + apiMessage);
+    throw new Error('TrackCourier.io: monthly limit of your plan reached (' + apiMessage + '). Upgrade the plan or wait for next month.');
+  }
+  if (code === 404 && errCode === 'COURIER_NOT_FOUND') {
+    throw new Error('TrackCourier.io does not know the courier name "' + slug + '". Check trackCourierSlug in Config.gs.');
+  }
+  if (code === 404) return { error: 'TrackCourier.io found no shipment with this number. Check it on the courier\'s website.' };
+  if (code === 502 || code === 504) return { error: 'The courier\'s system did not answer in time (' + apiMessage + '). Will retry on the next run.' };
+  if (code !== 200 || !json || json.success === false) return { error: 'TrackCourier.io HTTP ' + code + ': ' + apiMessage };
   return parseTrackCourierResult_(json);
 }
 
 /** Read the status and date out of a /v1/track answer. */
 function parseTrackCourierResult_(json) {
   var t = json.data || json.Data || json.result || json;
+  if (t.CourierHasNoRecordOfShipment === true) {
+    return { error: 'The courier has no record of this number yet. Check it on the courier\'s website.' };
+  }
   var pick = function (obj, names) {
     for (var i = 0; i < names.length; i++) if (obj && obj[names[i]] != null && obj[names[i]] !== '') return obj[names[i]];
     return '';
@@ -106,8 +121,15 @@ function parseTrackCourierResult_(json) {
   };
 }
 
-/** "InTransit" / "in_transit" → "In Transit". */
+var TC_STATE_LABELS_ = {
+  pending: 'Pending', intransit: 'In Transit', outfordelivery: 'Out for Delivery',
+  delivered: 'Delivered', exception: 'Exception', returned: 'Returned', cancelled: 'Cancelled',
+};
+
+/** "intransit" / "in_transit" / "InTransit" → "In Transit". */
 function humanizeState_(state) {
+  var known = TC_STATE_LABELS_[normalizeText_(state)];
+  if (known) return known;
   return String(state || '')
     .replace(/[_-]+/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -120,15 +142,29 @@ function toArray_(x) {
   return Array.isArray(x) ? x : [x];
 }
 
-/** Used by "Test API connections". */
+/**
+ * Used by "Test API connections". Uses the courier list, which TrackCourier.io does not
+ * count against your monthly requests, and checks the courier names in Config.gs.
+ */
 function testTrackCourierConnection_() {
-  if (!getSecret_('TRACKCOURIER_API_KEY')) return 'TrackCourier.io: no API key saved.';
-  var response = UrlFetchApp.fetch(CONFIG.TRACKCOURIER_BASE_URL + '/track?courier=' +
-    encodeURIComponent(CONFIG.COURIERS.SAFEXPRESS.trackCourierSlug) + '&tracking_number=0000000000', {
-    headers: { 'X-API-Key': getSecret_('TRACKCOURIER_API_KEY') }, muteHttpExceptions: true,
+  var key = getSecret_('TRACKCOURIER_API_KEY');
+  if (!key) return 'TrackCourier.io: no API key saved.';
+  var response = UrlFetchApp.fetch(CONFIG.TRACKCOURIER_BASE_URL + '/couriers', {
+    headers: { 'X-API-Key': key, Accept: 'application/json' }, muteHttpExceptions: true,
   });
   var code = response.getResponseCode();
   if (code === 401 || code === 403) return 'TrackCourier.io: ❌ key rejected (HTTP ' + code + ').';
-  if (code === 200 || code === 404) return 'TrackCourier.io: ✅ connected.';
-  return 'TrackCourier.io: ⚠ reply HTTP ' + code + ': ' + shorten_(response.getContentText(), 150);
+  if (code !== 200) return 'TrackCourier.io: ⚠ reply HTTP ' + code + ': ' + shorten_(response.getContentText(), 150);
+
+  var known = {};
+  try {
+    var data = JSON.parse(response.getContentText()).data || {};
+    toArray_(data.couriers || data).forEach(function (c) { if (c && c.slug) known[c.slug] = true; });
+  } catch (e) { /* list unreadable: just report the connection */ }
+  var missing = Object.keys(CONFIG.COURIERS)
+    .map(function (k) { return CONFIG.COURIERS[k].trackCourierSlug; })
+    .filter(function (slug) { return slug && Object.keys(known).length && !known[slug]; });
+  return missing.length
+    ? 'TrackCourier.io: ✅ connected, but ⚠ it does not list: ' + missing.join(', ')
+    : 'TrackCourier.io: ✅ connected.';
 }

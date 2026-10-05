@@ -104,7 +104,58 @@ test('bad key stops the run with a clear message', () => {
 test('404 → row-level error', () => assert.ok(/no shipment/.test(g('handleTrackCourierResponse_')(404, '{}', 'safexpress').error)));
 test('state names are made readable', () => {
   assert.strictEqual(g('humanizeState_')('InTransit'), 'In Transit');
-  assert.strictEqual(g('humanizeState_')('out_for_delivery'), 'Out For Delivery');
+  assert.strictEqual(g('humanizeState_')('out_for_delivery'), 'Out for Delivery');
+  assert.strictEqual(g('humanizeState_')('intransit'), 'In Transit');
+});
+test('example answer from the TrackCourier.io docs', () => {
+  const out = g('handleTrackCourierResponse_')(200, JSON.stringify({ success: true, data: {
+    MostRecentStatus: 'Delivered', ShipmentState: 'delivered',
+    Checkpoints: [
+      { Activity: 'Delivered', CheckpointState: 'delivered', CourierName: 'DTDC', Date: '18-Sep-2026', Time: '17:08', Location: 'Delhi' },
+      { Activity: 'Out for Delivery - Shipment is out for Delivery 2026-09-18 14:09:12', CheckpointState: 'outfordelivery', Date: '18-Sep-2026', Time: '14:09', Location: 'Delhi' },
+      { Activity: 'On The Way - On its way between JAIPUR and DELHI', CheckpointState: 'intransit', Date: '17-Sep-2026', Time: '22:15', Location: 'Jaipur to Delhi' },
+    ],
+    CourierHasNoRecordOfShipment: false }, usage: { used: 45, quota: 100 } }), 'dtdc');
+  assert.strictEqual(out.status, 'Delivered (Delhi)');
+  assert.strictEqual(iso(out.date), '2026-09-18T11:38:00.000Z');
+});
+test('courier has no record → row-level error', () => {
+  assert.ok(/no record/.test(g('handleTrackCourierResponse_')(200, '{"success":true,"data":{"CourierHasNoRecordOfShipment":true,"Checkpoints":[]}}', 'safexpress').error));
+});
+test('documented error codes', () => {
+  const h = g('handleTrackCourierResponse_');
+  assert.throws(() => h(402, '{"success":false,"error":{"code":"QUOTA_EXCEEDED","message":"Monthly quota of 100 requests exceeded."}}', 'x'), /monthly limit.*Monthly quota of 100/);
+  assert.throws(() => h(404, '{"success":false,"error":{"code":"COURIER_NOT_FOUND","message":"Unknown courier slug"}}', 'safexpres'), /does not know the courier name "safexpres"/);
+  assert.ok(/no shipment/.test(h(404, '{"success":false,"error":{"code":"TRACKING_NOT_FOUND","message":"Tracking number not found"}}', 'x').error));
+  assert.ok(/retry/.test(h(504, '{"success":false,"error":{"code":"TIMEOUT","message":"Courier backend timeout - retry"}}', 'x').error));
+});
+
+console.log('DP World response parsing (real reply for docket 1846272584)');
+const dpw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'dpworld-1846272584.json'), 'utf8'));
+test('delivered docket → latest status and date', () => {
+  const out = g('parseDpWorldResponse_')(dpw);
+  assert.strictEqual(out['1846272584'].status, 'Delivered (Anantapur)');
+  assert.strictEqual(iso(out['1846272584'].date), '2026-09-30T15:33:00.000Z'); // 30-Sep-2026 21:03 IST
+});
+test('docket in the "failed" list is simply absent', () => {
+  assert.deepStrictEqual(dpw.data.failedTrackings, ['ZZ99999999X']);
+  assert.strictEqual(g('parseDpWorldResponse_')(dpw).ZZ99999999X, undefined);
+});
+test('parcel still moving: newest hub scan becomes the detail', () => {
+  // Same docket as it looked on 27-Sep: only the first steps had happened.
+  const events = JSON.parse(JSON.stringify(dpw.data.trackings[0].containersTrackingEvents['1846272584'])).slice(0, 4);
+  events[3].sub_events = events[3].sub_events.filter((s) => s.ata < '2026-09-27T17:00:00');
+  events[3].event_time = '2026-09-24T00:54:00';
+  const out = g('latestDpWorldEvent_')(events);
+  assert.strictEqual(g('formatStatus_')(out.main, out.detail, out.location), 'In Transit - Destination Hub In (BANGALORE HUB BLRH)');
+  assert.strictEqual(iso(out.when), '2026-09-27T11:25:49.000Z');
+});
+test('planned (not yet happened) events are ignored', () => {
+  const out = g('latestDpWorldEvent_')([
+    { event_desc: 'Received', event_status: 'actual', event_time: '2026-10-01T10:00:00', event_location: { city: 'Pune' } },
+    { event_desc: 'Delivered', event_status: 'planned', event_time: '2026-10-05T10:00:00', event_location: { city: 'Goa' } },
+  ]);
+  assert.strictEqual(out.main, 'Received');
 });
 
 console.log('Misc');
