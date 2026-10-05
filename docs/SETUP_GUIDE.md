@@ -45,22 +45,14 @@ You'll see your existing script files on the left. **Leave them exactly as they 
 | `apps-script/Delhivery.gs` | `CT_Delhivery` |
 | `apps-script/DPWorld.gs` | `CT_DPWorld` |
 
-> ⚠️ **Don't replace `appsscript.json`** in the main spreadsheet. It belongs to your other
-> scripts too. The robot doesn't need it changed. (The one exception is in the box below.)
+> ℹ️ **Leave `appsscript.json` alone.** Your spreadsheet already has this settings file, and
+> it is shared with your other scripts. You don't need to copy ours or change yours.
 
 **Step 3.** Press **Ctrl + S** to save.
 
-> **Only if Step 5 later shows an error about permissions ("scopes"):** your other scripts
-> list their permissions by hand. Open ⚙ **Project Settings**, tick
-> **Show "appsscript.json" manifest file**, open `appsscript.json`, and **add** (don't
-> replace) these lines inside the existing `"oauthScopes": [ … ]` list:
-> ```
-> "https://www.googleapis.com/auth/spreadsheets.currentonly",
-> "https://www.googleapis.com/auth/script.external_request",
-> "https://www.googleapis.com/auth/script.scriptapp",
-> "https://www.googleapis.com/auth/script.container.ui"
-> ```
-> Then save and repeat Step 5.
+> **Rare case (most people can skip this):** only if Step 5 shows an error mentioning
+> **"scopes"**, send a screenshot of the error to whoever set this up for you. This only happens
+> when a spreadsheet's `appsscript.json` contains a line starting with `"oauthScopes"`.
 
 ---
 
