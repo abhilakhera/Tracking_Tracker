@@ -156,6 +156,10 @@ var CT_SYNC = {
   // The sync also runs on its own every N hours (1, 2, 4, 6, 8 or 12).
   SYNC_EVERY_HOURS: 1,
 
+  // Write FSNs in Order Tracking and Review & Rating Data as clickable Flipkart links
+  // (same link as the spreadsheet's FSN link script). false = plain text.
+  FSN_AS_LINK: true,
+
   DATE_FORMAT: 'dd-mmm-yyyy',
   LOG_SHEET_NAME: 'Order Sync Log',
 };

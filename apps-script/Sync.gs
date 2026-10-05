@@ -102,18 +102,25 @@ function CT_moveRowsUp_(sheet, headerRows, lastCol) {
   var isEmpty = function (v) { return !(v instanceof Date) && CT_cellText_(v) === ''; };
 
   // First decide what to do with every column, so nothing is changed if one can't be moved.
+  // A formula on an order's row (e.g. an FSN link) belongs to that order and moves with it.
+  // A formula on an empty row (e.g. the Remarks formula filled down in advance) stays put.
+  var isDataRow = {};
+  dataRows.forEach(function (r) { isDataRow[r] = true; });
   var toMove = [];
   for (var c = 0; c < lastCol; c++) {
-    var hasFormula = false;
-    var plainData = false;
+    var fixedFormula = false;
+    var dataContent = false;
     for (var i = 0; i < touched; i++) {
-      if (formulas[i][c] !== '') hasFormula = true;
-      else if (!isEmpty(values[i][c])) plainData = true;
+      if (isDataRow[i]) {
+        if (formulas[i][c] !== '' || !isEmpty(values[i][c])) dataContent = true;
+      } else if (formulas[i][c] !== '') {
+        fixedFormula = true;
+      }
     }
-    if (!plainData) continue;          // nothing to move (e.g. a formula-only column like Remarks)
-    if (hasFormula) {
-      throw new Error('Column ' + CT_columnLetter_(c + 1) + ' mixes formulas and typed values, so the rows ' +
-        'cannot be moved automatically. Nothing was changed.');
+    if (!dataContent) continue;        // nothing to move in this column (e.g. Remarks)
+    if (fixedFormula) {
+      throw new Error('Column ' + CT_columnLetter_(c + 1) + ' has formulas on empty rows as well as order data, ' +
+        'so the rows cannot be moved automatically. Nothing was changed.');
     }
     toMove.push(c);
   }
@@ -123,7 +130,8 @@ function CT_moveRowsUp_(sheet, headerRows, lastCol) {
     var newFormats = [];
     for (var k = 0; k < touched; k++) {
       var src = dataRows[k];
-      newValues.push([src === undefined ? '' : values[src][c]]);
+      // A formula is written back as a formula (setValues treats "=..." as a formula).
+      newValues.push([src === undefined ? '' : (formulas[src][c] || values[src][c])]);
       newFormats.push([src === undefined ? formats[k][c] : formats[src][c]]);
     }
     sheet.getRange(first, c + 1, touched, 1).setNumberFormats(newFormats).setValues(newValues);
@@ -329,14 +337,14 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
   Object.keys(desired).forEach(function (idxText) {
     var idx = Number(idxText);
     var d = desired[idx];
-    var diff = d.isNew ? d.values : CT_changedCells_(t, idx, d.values, tz);
+    var diff = d.isNew ? d.values : CT_changedCells_(t, idx, d.values, tz, [O.FSN]);
     if (!diff) return;
     changes[idx] = diff;
     if (d.isNew) stats.added++; else stats.updated++;
   });
 
   CT_writeChanges_(sheet, t, changes, [O.ORDER_ITEM_ID, O.ORDER_ID], log, {
-    dateCols: [O.ORDER_DATE, O.DELIVERY_BY], textCols: [O.ORDER_ITEM_ID],
+    dateCols: [O.ORDER_DATE, O.DELIVERY_BY], textCols: [O.ORDER_ITEM_ID], linkCols: [O.FSN],
   });
   return stats;
 }
@@ -412,14 +420,14 @@ function CT_syncReviews_(ss, tz, pre, selfShip, log) {
       [R.NAME, item.name || ''], [R.PHONE, item.phone || ''],
       [R.DELIVERY_DATE, CT_dateOnly_(delivered, tz)], [R.ORDER_ITEM_ID, key],
     ]);
-    var diff = isNew ? values : CT_changedCells_(rv, idx, values, tz);
+    var diff = isNew ? values : CT_changedCells_(rv, idx, values, tz, [R.FSN]);
     if (!diff) continue;
     changes[idx] = diff;
     if (isNew) stats.added++; else stats.updated++;
   }
 
   CT_writeChanges_(sheet, rv, changes, [R.ORDER_ITEM_ID, R.ORDER_ID], log, {
-    dateCols: [R.ORDER_DATE, R.DELIVERY_DATE], textCols: [R.ORDER_ITEM_ID],
+    dateCols: [R.ORDER_DATE, R.DELIVERY_DATE], textCols: [R.ORDER_ITEM_ID], linkCols: [R.FSN],
   });
   return stats;
 }
@@ -455,6 +463,7 @@ function CT_readTable_(sheet, headerRows, columns) {
     count: count,
     value: function (i, col) { return i < values.length ? values[i][CT_columnNumber_(col) - minCol] : ''; },
     text: function (i, col) { return i < shown.length ? CT_cellText_(shown[i][CT_columnNumber_(col) - minCol]) : ''; },
+    formula: function (i, col) { return i < formulas.length ? formulas[i][CT_columnNumber_(col) - minCol] : ''; },
   };
 }
 
@@ -497,7 +506,8 @@ function CT_writeChanges_(sheet, t, changes, keyCols, log, opts) {
       var range = sheet.getRange(t.firstRow + run.start, c, run.end - run.start + 1, 1);
       if (opts.textCols.indexOf(col) >= 0) range.setNumberFormat('@');
       var vals = [];
-      for (var i = run.start; i <= run.end; i++) vals.push([changes[i][col]]);
+      var asLink = CT_SYNC.FSN_AS_LINK && (opts.linkCols || []).indexOf(col) >= 0;
+      for (var i = run.start; i <= run.end; i++) vals.push([asLink ? CT_fsnLink_(changes[i][col]) : changes[i][col]]);
       range.setValues(vals);
       if (opts.dateCols.indexOf(col) >= 0) range.setNumberFormat(CT_SYNC.DATE_FORMAT);
     });
@@ -572,13 +582,31 @@ function CT_sameCell_(current, wanted, tz) {
   return CT_cellText_(current) === CT_cellText_(wanted);
 }
 
-/** The subset of `wanted` ({ column: value }) that differs from row idx of table t, or null. */
-function CT_changedCells_(t, idx, wanted, tz) {
+/**
+ * The subset of `wanted` ({ column: value }) that differs from row idx of table t, or null.
+ * linkCols: columns that should hold a clickable FSN link; a plain FSN there counts as different.
+ */
+function CT_changedCells_(t, idx, wanted, tz, linkCols) {
   var diff = null;
   Object.keys(wanted).forEach(function (col) {
-    if (!CT_sameCell_(t.value(idx, col), wanted[col], tz)) (diff = diff || {})[col] = wanted[col];
+    var same = CT_sameCell_(t.value(idx, col), wanted[col], tz);
+    if (same && CT_SYNC.FSN_AS_LINK && (linkCols || []).indexOf(col) >= 0 && CT_cellText_(wanted[col]) !== '') {
+      same = /^=HYPERLINK\(/i.test(t.formula(idx, col));
+    }
+    if (!same) (diff = diff || {})[col] = wanted[col];
   });
   return diff;
+}
+
+/**
+ * FSN → clickable Flipkart link, the same link as the spreadsheet's own FSN script makes.
+ * (Script writes don't trigger that script's onEdit, so the sync makes the link itself.)
+ */
+function CT_fsnLink_(fsn) {
+  var text = CT_cellText_(fsn);
+  if (!text) return '';
+  var url = 'https://www.flipkart.com/product/p/itmf' + encodeURIComponent(text) + '?pid=' + encodeURIComponent(text);
+  return '=HYPERLINK("' + url.replace(/"/g, '""') + '","' + text.replace(/"/g, '""') + '")';
 }
 
 /** [[key, value], ...] → { key: value } */

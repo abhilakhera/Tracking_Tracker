@@ -8,8 +8,11 @@ function makeSheet(name, rows, ss, writes) {
   const ensure = (r) => { while (data.length < r) data.push([]); };
   const get = (r, c) => (data[r - 1] ? data[r - 1][c - 1] : undefined);
   const isFormula = (v) => typeof v === 'string' && v.startsWith('=');
+  // What a formula shows: =HYPERLINK("url","label") shows its label; other formulas show nothing.
+  const result = (v) => { const m = /^=HYPERLINK\(".*","(.*)"\)$/i.exec(v); return m ? m[1].replace(/""/g, '"') : ''; };
   const shown = (v) => {
-    if (v === undefined || v === null || isFormula(v)) return '';
+    if (v === undefined || v === null) return '';
+    if (isFormula(v)) return result(v);
     if (v instanceof Date) { // like Sheets showing a dd-mmm-yyyy date (in IST)
       const d = new Date(v.getTime() + 330 * 60000);
       return `${d.getUTCDate()}-${'JanFebMarAprMayJunJulAugSepOctNovDec'.substr(d.getUTCMonth() * 3, 3)}-${d.getUTCFullYear()}`;
@@ -31,7 +34,7 @@ function makeSheet(name, rows, ss, writes) {
         getSheet: () => sheet,
         getRow: () => r,
         getLastRow: () => r + nr - 1,
-        getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (isFormula(get(r + i, c + j)) ? '' : get(r + i, c + j) ?? ''))),
+        getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (isFormula(get(r + i, c + j)) ? result(get(r + i, c + j)) : get(r + i, c + j) ?? ''))),
         getDisplayValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => shown(get(r + i, c + j)))),
         // A string starting with "=" is treated as a formula that shows nothing.
         getFormulas: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (isFormula(get(r + i, c + j)) ? get(r + i, c + j) : ''))),

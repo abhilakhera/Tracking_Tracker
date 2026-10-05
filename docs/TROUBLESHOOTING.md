@@ -32,6 +32,7 @@ updated, with the reason.
 | "This row has a Tracking ID but no Order Id" | A row you added by hand (e.g. a test row) | Type its Order Id in column A (the robot then fills the rest), or delete the row. |
 | "No longer a Dispatch order in Pre CRM" | Its remark changed, or it was removed from Pre CRM | The row is kept on purpose. Delete it yourself if it isn't needed. |
 | "The same Order Item Id is on more than one row" | Pre CRM has the same product twice | Delete the extra row in Pre CRM. |
+| FSNs in Order Tracking / Review & Rating Data aren't clickable | A sheet's `onEdit` script only reacts to edits made by a person, never to values written by a script | The sync writes FSNs as Flipkart links itself (`FSN_AS_LINK: true` in `CT_Config`). Update `CT_Sync` and `CT_Config`, then **Sync orders now**. |
 | A delivered order isn't in Review & Rating Data yet | It appears 2 days after its Status Date | Wait; or check it isn't in Self Ship Cases. |
 | Changes in Pre CRM don't show up | The sync runs about a minute after an edit, and every hour | Wait a minute, or **📦 Courier Tracking → Sync orders now**. |
 

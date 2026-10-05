@@ -13,6 +13,7 @@ const DAY = 86400000;
 const ist = (y, m, d) => new Date(Date.UTC(y, m - 1, d) - 330 * 60000); // a date cell (midnight IST)
 const daysAgo = (n) => { const t = new Date(Date.now() + 330 * 60000 - n * DAY); return ist(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); };
 const day = (v) => (v instanceof Date ? Utilities.formatDate(v) : v);
+const link = (fsn) => `=HYPERLINK("https://www.flipkart.com/product/p/itmf${fsn}?pid=${fsn}","${fsn}")`;
 
 // Pre CRM row: A SKU, B FSN, C Product, D Category, E Order Id, F Order Item Id, G Ordered On,
 // H-I prices, J Ship to name, K City, L State, M PIN, N Phone, O Email, P Assigned, Q Remarks, R Sub, S Delivery By, T Msg
@@ -82,7 +83,7 @@ scenario('Pre CRM → Order Tracking: which orders, one row per product, manual 
   const added = ot.slice(3).map((r) => [r[0], r[2], r[15]]);
   assert.deepStrictEqual(added, [['OD200', 'SKU-A', '338312839460372100'], ['OD300', 'SKU-B', '301'], ['OD300', 'SKU-C', '302']]);
   const a = ot[3];
-  assert.deepStrictEqual([day(a[1]), a[3], a[4], a[5], day(a[11])], ['2026-09-20', 'FA', 'Asha', 9111111111, '2026-10-04']);
+  assert.deepStrictEqual([day(a[1]), a[3], a[4], a[5], day(a[11])], ['2026-09-20', link('FA'), 'Asha', 9111111111, '2026-10-04']);
   assert.ok(a[1] instanceof Date && a[11] instanceof Date, 'Order Date and Delivery By Date are real dates');
   assert.ok([6, 7, 8, 9, 10, 12].every((c) => a[c] === undefined), 'G-K and M are never written for new rows');
   // Self Ship: by item (OD300/302) and by order (OD200)
@@ -137,7 +138,7 @@ scenario('Delivered + 2 days → Review & Rating Data; Self Ship orders kept out
   assert.deepStrictEqual(rv.slice(1).map((r) => r[0]), ['OD9', 'OD1', 'OD2']);
   const r1 = rv[2];
   assert.deepStrictEqual([day(r1[1]), r1[2], r1[3], r1[4], r1[5], day(r1[6]), r1[12]],
-    ['2026-09-21', 'F1', 'Bed', 'One', 9100000001, day(daysAgo(3)), '1']);
+    ['2026-09-21', link('F1'), 'Bed', 'One', 9100000001, day(daysAgo(3)), '1']);
   assert.ok([7, 8, 9, 10, 11].every((c) => r1[c] === undefined), "your team's columns H-L are never written");
   assert.strictEqual(rv[3][3], 'Sofa');
 
@@ -222,7 +223,7 @@ scenario('"Move orders up" fixes orders that were added below formula rows', () 
     'Pre CRM': [PRE_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
       blankWithFormula(2), blankWithFormula(3), blankWithFormula(4), blankWithFormula(5),
-      orderRow('OD1', '1'), orderRow('OD2', '2', { 6: 'TRK2', 7: 'Delhivery', 13: 'Replacement' }), orderRow('OD3', '3')],
+      orderRow('OD1', '1', { 3: link('F1') }), orderRow('OD2', '2', { 6: 'TRK2', 7: 'Delhivery', 13: 'Replacement' }), orderRow('OD3', '3')],
   });
   const sheet = t.ss.getSheetByName('Order Tracking');
   sheet.formats['7,2'] = 'dd-mmm-yyyy';
@@ -234,6 +235,7 @@ scenario('"Move orders up" fixes orders that were added below formula rows', () 
   assert.deepStrictEqual(ot.slice(1, 4).map((r) => [r[0], r[6], r[7], r[13], r[15]]),
     [['OD1', '', '', '', '1'], ['OD2', 'TRK2', 'Delhivery', 'Replacement', '2'], ['OD3', '', '', '', '3']]);
   assert.ok(ot[1][1] instanceof Date && ot[1][11] instanceof Date, 'dates moved as dates');
+  assert.strictEqual(ot[1][3], link('F1'), 'an FSN link (a formula on the order row) moves with its row');
   assert.strictEqual(sheet.formats['3,2'], 'dd-mmm-yyyy', 'number formats move with the values (OD2: row 7 → row 3)');
   // The Remarks formulas did not move and were not overwritten.
   assert.deepStrictEqual(ot.slice(1, 5).map((r) => r[12]), [daysFormula(2), daysFormula(3), daysFormula(4), daysFormula(5)]);
@@ -245,7 +247,7 @@ scenario('"Move orders up" fixes orders that were added below formula rows', () 
   assert.deepStrictEqual(alerts, ['Orders already start at the top; nothing to move.']);
 });
 
-scenario('"Move orders up" refuses (and changes nothing) when a column mixes formulas and typed values', () => {
+scenario('"Move orders up" refuses (and changes nothing) when a column has formulas on empty rows and order data', () => {
   const t = load({
     'Pre CRM': [PRE_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']), blankWithFormula(2),
@@ -255,7 +257,7 @@ scenario('"Move orders up" refuses (and changes nothing) when a column mixes for
   const alerts = [];
   t.ctx.SpreadsheetApp.getUi = () => ({ alert: (m) => alerts.push(m) });
   t.run('CT_moveOrdersToTop()');
-  assert.ok(/Column M mixes formulas and typed values/.test(alerts[0]), alerts[0]);
+  assert.ok(/Column M has formulas on empty rows as well as order data/.test(alerts[0]), alerts[0]);
   assert.strictEqual(JSON.stringify(t.tab('Order Tracking')), before);
 });
 
@@ -265,6 +267,21 @@ scenario('a failing sync still writes its reason to the Order Sync Log tab', () 
   assert.throws(() => t.run('CT_syncNow()'), /Could not find the tab "Self Ship Cases"/);
   assert.ok(t.log().some((m) => m.includes('ERROR') && m.includes('Could not find the tab "Self Ship Cases"')), t.log().join('\n'));
   assert.strictEqual(t.props.CT_SYNC_RUNNING_SINCE, undefined);
+});
+
+// ── 9. FSN links ──
+scenario('FSNs are written as clickable Flipkart links; existing plain FSNs are converted once', () => {
+  const t = load({
+    'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'BDDHAYHWAX2JGNHZ', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'One', phone: 1, remark: 'Dispatch', by: '' })],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']), ['OD1', ist(2026, 9, 21), 'S1', 'BDDHAYHWAX2JGNHZ', 'One', 1, '', '', '', '', '', '', '', '', '', '1']],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  const cell = t.tab('Order Tracking')[1][3];
+  assert.strictEqual(cell, '=HYPERLINK("https://www.flipkart.com/product/p/itmfBDDHAYHWAX2JGNHZ?pid=BDDHAYHWAX2JGNHZ","BDDHAYHWAX2JGNHZ")');
+  const before = t.ss.writes.length;
+  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.ss.writes.slice(before).filter((w) => !w.startsWith('Order Sync Log')), [], 'links are not rewritten every hour');
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);
