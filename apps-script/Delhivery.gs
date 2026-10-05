@@ -11,19 +11,19 @@
  * To get a token, see docs/GETTING_API_KEYS.md.
  */
 
-var DELHIVERY_BATCH_SIZE = 50; // Delhivery accepts up to 50 waybills per request
+var CT_DELHIVERY_BATCH_SIZE = 50; // Delhivery accepts up to 50 waybills per request
 
 /**
  * Track a list of Delhivery waybills.
  * Returns { trackingId: { status, date } | { error } }.
  */
-function trackWithDelhivery_(ids) {
-  var token = getSecret_('DELHIVERY_TOKEN');
+function CT_trackWithDelhivery_(ids) {
+  var token = CT_getSecret_('CT_DELHIVERY_TOKEN');
   if (!token) throw new Error('No Delhivery API token saved. Use the menu: Courier Tracking → Set / change API keys.');
 
   var results = {};
-  chunk_(ids, DELHIVERY_BATCH_SIZE).forEach(function (batch) {
-    var url = CONFIG.DELHIVERY_BASE_URL + '/api/v1/packages/json/?waybill=' + encodeURIComponent(batch.join(','));
+  CT_chunk_(ids, CT_DELHIVERY_BATCH_SIZE).forEach(function (batch) {
+    var url = CT_CONFIG.DELHIVERY_BASE_URL + '/api/v1/packages/json/?waybill=' + encodeURIComponent(batch.join(','));
     var response = UrlFetchApp.fetch(url, {
       method: 'get',
       headers: { Authorization: 'Token ' + token, Accept: 'application/json' },
@@ -38,25 +38,25 @@ function trackWithDelhivery_(ids) {
     var json = null;
     try { json = JSON.parse(body); } catch (e) { /* not JSON, handled below */ }
     if (code !== 200 || !json) {
-      batch.forEach(function (id) { results[id] = { error: 'Delhivery HTTP ' + code + ': ' + shorten_(body) }; });
+      batch.forEach(function (id) { results[id] = { error: 'Delhivery HTTP ' + code + ': ' + CT_shorten_(body) }; });
       return;
     }
 
-    var parsed = parseDelhiveryResponse_(json);
+    var parsed = CT_parseDelhiveryResponse_(json);
     batch.forEach(function (id) {
       results[id] = parsed[id.toUpperCase()] ||
-        { error: 'Delhivery has no shipment with this number' + (json.Error ? ' (' + shorten_(json.Error) + ')' : '') };
+        { error: 'Delhivery has no shipment with this number' + (json.Error ? ' (' + CT_shorten_(json.Error) + ')' : '') };
     });
   });
   return results;
 }
 
 /** Turn a Delhivery response into { AWB (upper-case): { status, date } }. */
-function parseDelhiveryResponse_(json) {
+function CT_parseDelhiveryResponse_(json) {
   var out = {};
   (json.ShipmentData || []).forEach(function (item) {
     var s = item.Shipment || item;
-    var awb = cleanTrackingId_(s.AWB || s.Waybill).toUpperCase();
+    var awb = CT_cleanTrackingId_(s.AWB || s.Waybill).toUpperCase();
     if (!awb) return;
 
     var st = s.Status || {};
@@ -69,8 +69,8 @@ function parseDelhiveryResponse_(json) {
     var scans = (s.Scans || []).map(function (x) { return x.ScanDetail || x; });
     if ((!main || !when) && scans.length) {
       scans.sort(function (a, b) {
-        return (parseCourierDate_(b.ScanDateTime || b.StatusDateTime) || 0) -
-               (parseCourierDate_(a.ScanDateTime || a.StatusDateTime) || 0);
+        return (CT_parseCourierDate_(b.ScanDateTime || b.StatusDateTime) || 0) -
+               (CT_parseCourierDate_(a.ScanDateTime || a.StatusDateTime) || 0);
       });
       var last = scans[0];
       main = main || last.Scan || '';
@@ -82,20 +82,20 @@ function parseDelhiveryResponse_(json) {
     // A return shipment that has reached the sender shows Status "RTO" with type "DL".
     if (/^rto$/i.test(main) && String(st.StatusType).toUpperCase() === 'DL') main = 'RTO Delivered';
 
-    out[awb] = { status: formatStatus_(main, detail, location), date: parseCourierDate_(when) };
+    out[awb] = { status: CT_formatStatus_(main, detail, location), date: CT_parseCourierDate_(when) };
   });
   return out;
 }
 
 /** Used by "Test API connections". Returns a one-line result. */
-function testDelhiveryConnection_() {
-  var token = getSecret_('DELHIVERY_TOKEN');
+function CT_testDelhiveryConnection_() {
+  var token = CT_getSecret_('CT_DELHIVERY_TOKEN');
   if (!token) return 'Delhivery: no token saved (optional; Delhivery numbers go through TrackCourier.io).';
-  var response = UrlFetchApp.fetch(CONFIG.DELHIVERY_BASE_URL + '/api/v1/packages/json/?waybill=0000000000000', {
+  var response = UrlFetchApp.fetch(CT_CONFIG.DELHIVERY_BASE_URL + '/api/v1/packages/json/?waybill=0000000000000', {
     headers: { Authorization: 'Token ' + token }, muteHttpExceptions: true,
   });
   var code = response.getResponseCode();
   if (code === 401 || code === 403) return 'Delhivery: ❌ token rejected (HTTP ' + code + ').';
   if (code === 200) return 'Delhivery: ✅ connected.';
-  return 'Delhivery: ⚠ unexpected reply HTTP ' + code + ': ' + shorten_(response.getContentText(), 120);
+  return 'Delhivery: ⚠ unexpected reply HTTP ' + code + ': ' + CT_shorten_(response.getContentText(), 120);
 }

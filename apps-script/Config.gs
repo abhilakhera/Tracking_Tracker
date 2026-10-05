@@ -1,24 +1,32 @@
 /**
  * ============================================================================
- *  SETTINGS: this is the only file you normally need to edit.
+ *  COURIER TRACKING: SETTINGS. This is the only file you normally need to edit.
  * ============================================================================
  *
  *  API keys are NOT stored here. Store them from the sheet menu:
  *  "📦 Courier Tracking" → "Set / change API keys". That keeps them out of the code.
+ *
+ *  Everything in these files starts with CT_ so it can never clash with other
+ *  scripts in the same spreadsheet.
  */
-var CONFIG = {
-  // Name of the tab that holds your shipments. Leave '' to use the FIRST tab.
-  SHEET_NAME: '',
+var CT_CONFIG = {
+  // Name of the tab that holds your shipments. Only this tab is ever changed.
+  SHEET_NAME: 'Order Tracking',
 
   // How many rows at the top are headings (not shipments).
   HEADER_ROWS: 1,
 
   // Column letters in your sheet.
+  //   TRACKING_ID, COURIER - read by the robot
+  //   BRIEF_STATUS         - written: just "Delivered", "In Transit", ... (set to '' if not wanted)
+  //   STATUS               - written: the full latest status
+  //   STATUS_DATE          - written: date of that status
   COLUMNS: {
     TRACKING_ID: 'G',
     COURIER: 'H',
-    STATUS: 'I',
-    STATUS_DATE: 'J',
+    BRIEF_STATUS: 'I',
+    STATUS: 'J',
+    STATUS_DATE: 'K',
   },
 
   // How the Status Date column is displayed. The cell holds a real date value,
@@ -34,7 +42,7 @@ var CONFIG = {
   // returns a time without saying which timezone it is in.
   COURIER_UTC_OFFSET_MINUTES: 330,
 
-  // Skip rows whose Status already starts with one of these words.
+  // Skip rows whose Brief Status or Tracking Status starts with one of these words.
   // Finished shipments don't change, so skipping them saves API calls.
   SKIP_FINISHED: true,
   FINISHED_STATUS_PREFIXES: ['delivered', 'rto delivered', 'returned', 'cancelled', 'lost'],
@@ -46,13 +54,14 @@ var CONFIG = {
   SHOW_DETAIL: true,
   SHOW_LOCATION: true,
 
-  // Automatic updates run every N hours. Allowed values: 1, 2, 4, 6, 8, 12, or 24 (once a day).
-  // Each run uses 1 TrackCourier.io request per undelivered parcel, so running less
-  // often saves your monthly requests. See "How many requests will I use?" in the guide.
-  AUTO_UPDATE_EVERY_HOURS: 12,
+  // Automatic update: once a day at this hour (24-hour clock, 8 = 8 AM) in this timezone.
+  // Google starts daily jobs within a 30-minute window, so it runs between 8:00 and 8:30.
+  // Only parcels that are not delivered yet are checked.
+  DAILY_UPDATE_HOUR: 8,
+  TIMEZONE: 'Asia/Kolkata',
 
   // Name of the tab where each run writes its problems and notes. The script creates it.
-  LOG_SHEET_NAME: 'Tracking Log',
+  LOG_SHEET_NAME: 'Courier Tracking Log',
 
   // Couriers.
   //   aliases  - how the courier may be spelled in column H. Case, spaces and
@@ -90,7 +99,7 @@ var CONFIG = {
 
   // TrackCourier.io allows a set number of requests per minute, depending on your plan
   // (Free: 10, Starter: 60, Pro: 300). Set this to your plan's number.
-  TRACKCOURIER_REQUESTS_PER_MINUTE: 10,
+  TRACKCOURIER_REQUESTS_PER_MINUTE: 60,
 
   // Technical limits. Google stops a script after 6 minutes, so the script pauses
   // before that and resumes automatically a minute later.

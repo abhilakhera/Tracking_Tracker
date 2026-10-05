@@ -6,23 +6,26 @@ by itself.
 ## What it does, in one picture
 
 ```
-  Your Google Sheet
-  ┌──────────────┬────────────┬──────────────────────────┬─────────────┐
-  │ G            │ H          │ I                        │ J           │
-  │ Tracking ID  │ Courier    │ Tracking Status          │ Status Date │
-  ├──────────────┼────────────┼──────────────────────────┼─────────────┤
-  │ 1234567890   │ Delhivery  │ In Transit (Mumbai)      │ 03-Oct-2026 │
-  │ 55123456     │ Safexpress │ Delivered (Chennai)      │ 02-Oct-2026 │
-  │ DPW00987     │ DP World   │ Out for Delivery         │ 04-Oct-2026 │
-  └──────────────┴────────────┴──────────────────────────┴─────────────┘
-        ▲ you type these        ▲ the robot fills these in
+  Your Google Sheet, tab "Order Tracking"
+  ┌─────────────┬────────────┬──────────────┬────────────────────────────────┬─────────────┐
+  │ G           │ H          │ I            │ J                              │ K           │
+  │ Tracking ID │ Courier    │ Brief Status │ Tracking Status                │ Status Date │
+  ├─────────────┼────────────┼──────────────┼────────────────────────────────┼─────────────┤
+  │ 4238701017… │ Delhivery  │ In Transit   │ In Transit - Shipment left …   │ 03-Oct-2026 │
+  │ 100041695709│ Safexpress │ Delivered    │ Delivered (Chennai)            │ 02-Oct-2026 │
+  │ 1846272584  │ DP World   │ Delivered    │ Delivered (Anantapur)          │ 30-Sep-2026 │
+  └─────────────┴────────────┴──────────────┴────────────────────────────────┴─────────────┘
+        ▲ you type these          ▲ the robot fills these in
 ```
 
-Every 12 hours (you can change this) the robot:
+Every morning at 8 AM the robot:
 
-1. reads the **Tracking ID** (column G) and **Courier** (column H) of each row,
+1. reads the **Tracking ID** (G) and **Courier** (H) of every parcel that isn't delivered yet,
 2. asks that courier "where is this parcel now?",
-3. writes the answer in **Tracking Status** (column I) and the **date** of that update (column J).
+3. writes **Brief Status** (I), the full **Tracking Status** (J) and the **date** of that update (K).
+
+It only ever changes the **Order Tracking** tab, and it is built to sit safely next to the other
+scripts in your spreadsheet (everything in it starts with `CT_`).
 
 ## Words you'll see
 
@@ -54,13 +57,13 @@ Something not working? See **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)*
 
 ```
 apps-script/          code to paste into Extensions → Apps Script
-  Config.gs           settings (columns, date format, couriers, schedule)
+  Config.gs           settings (tab name, columns, date format, couriers, 8 AM schedule)
   Main.gs             menu, reading/writing the sheet, scheduling
   TrackCourier.gs     TrackCourier.io connector (Safexpress, Delhivery)
   Delhivery.gs        Delhivery's own API (optional, needs a Delhivery token)
   DPWorld.gs          DP World reader (the data behind DP World's tracking page)
   Utils.gs            date reading, courier-name matching
-  appsscript.json     timezone (India) and permissions
+  appsscript.json     permissions (for a fresh project only; keep your own in a sheet with other scripts)
 tests/                offline tests: npm test
 ```
 </details>
