@@ -71,6 +71,7 @@ apps-script/          code to paste into Extensions → Apps Script
   Delhivery.gs        Delhivery's own API (optional, needs a Delhivery token)
   DPWorld.gs          DP World reader (the data behind DP World's tracking page)
   Sync.gs             Pre CRM → Order Tracking → Review & Rating Data
+  Fsn.gs              FSN → clickable Flipkart link, in every tab
   Utils.gs            date reading, courier-name matching
   appsscript.json     permissions (for a fresh project only; keep your own in a sheet with other scripts)
 tests/                offline tests: npm test

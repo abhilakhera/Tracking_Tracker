@@ -8,7 +8,7 @@ const vm = require('vm');
 const assert = require('assert');
 const { makeSpreadsheet, makeScriptApp, Utilities } = require('./fake-sheet');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Fsn.gs', 'Main.gs'];
 const DAY = 86400000;
 const ist = (y, m, d) => new Date(Date.UTC(y, m - 1, d) - 330 * 60000); // a date cell (midnight IST)
 const daysAgo = (n) => { const t = new Date(Date.now() + 330 * 60000 - n * DAY); return ist(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); };
@@ -282,6 +282,48 @@ scenario('FSNs are written as clickable Flipkart links; existing plain FSNs are 
   const before = t.ss.writes.length;
   t.run('CT_syncNow()');
   assert.deepStrictEqual(t.ss.writes.slice(before).filter((w) => !w.startsWith('Order Sync Log')), [], 'links are not rewritten every hour');
+});
+
+// ── 10. FSN links in every tab ──
+scenario('FSN links in every tab: pasted values right away, script-written values hourly', () => {
+  const lookup = '=VLOOKUP(A2,category!A:B,2,FALSE)';
+  const t = load({
+    'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+    'Distribution': [['SKU', 'FSN', 'Listing ID'], ['S1', 'BDDGZM2ZSMXVKSVY', 'LST1'], ['S2', '', 'LST2'], ['S3', link('ALREADY'), 'LST3']],
+    'Negative Rating Data': [['Order', 'x', 'y', 'z', ' fsn '], ['OD1', 'a', 'b', 'c', '']], // FSN in column E, odd spacing/case
+    'Lookups': [['SKU', 'FSN'], ['S9', lookup]],
+    'Notes': [['Note'], ['BDDGZM2ZSMXVKSVY']], // no FSN heading: never touched
+  });
+  const paste = (tab, row, col, rows, cols) => t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName(${JSON.stringify(tab)}).getRange(${row}, ${col}, ${rows}, ${cols}) })`);
+  t.ctx.SpreadsheetApp.getActiveSpreadsheet = () => t.ss;
+
+  // Paste 3 rows x 3 columns (C2:E4) into Negative Rating Data: only column E (FSN) changes.
+  const neg = t.tab('Negative Rating Data');
+  neg[1] = ['OD1', 'a', 'pasted C', 'pasted D', 'FSNONE'];
+  neg[2] = ['OD2', 'a', 'pasted C', 'pasted D', 'FSNTWO'];
+  neg[3] = ['OD3', 'a', 'pasted C', 'pasted D', ''];
+  const before = t.ss.writes.length;
+  paste('Negative Rating Data', 2, 3, 3, 3);
+  assert.deepStrictEqual(neg.slice(1).map((r) => r.slice(2)), [['pasted C', 'pasted D', link('FSNONE')], ['pasted C', 'pasted D', link('FSNTWO')], ['pasted C', 'pasted D', '']]);
+  assert.ok(t.ss.writes.slice(before).every((w) => /^Negative Rating Data!R[23]C5$/.test(w)), t.ss.writes.slice(before).join(' '));
+
+  // Editing only the heading row changes nothing.
+  const before2 = t.ss.writes.length;
+  paste('Distribution', 1, 1, 1, 3);
+  assert.strictEqual(t.ss.writes.length, before2);
+
+  // Values written by scripts are converted by the hourly run, in every tab.
+  t.run('CT_hourlySync()');
+  const dist = t.tab('Distribution');
+  assert.deepStrictEqual(dist.slice(1).map((r) => r[1]), [link('BDDGZM2ZSMXVKSVY'), '', link('ALREADY')]);
+  assert.strictEqual(t.tab('Lookups')[1][1], lookup, 'a lookup formula is left alone');
+  assert.strictEqual(t.tab('Notes')[1][0], 'BDDGZM2ZSMXVKSVY', 'columns not headed FSN are never touched');
+
+  // The menu reports when there is nothing left to do.
+  const msgs = [];
+  t.ctx.SpreadsheetApp.getActiveSpreadsheet = () => Object.assign(t.ss, { toast: (m) => msgs.push(m) });
+  t.run('CT_linkAllFsns()');
+  assert.deepStrictEqual(msgs, ['All FSNs are already clickable links.']);
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);

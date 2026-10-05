@@ -21,11 +21,19 @@
 /** Menu: "Sync orders now". */
 function CT_syncNow() {
   CT_runSync_({ interactive: true });
+  CT_linkFsnsSafely_();
 }
 
 /** Hourly trigger. */
 function CT_hourlySync() {
   CT_runSync_({});
+  CT_linkFsnsSafely_(); // FSNs written by other scripts, in any tab
+}
+
+/** FSN links in all tabs; never lets a problem there stop the caller. */
+function CT_linkFsnsSafely_() {
+  if (!CT_SYNC.FSN_AS_LINK) return;
+  try { CT_linkAllFsns_(); } catch (e) { console.error('FSN links: ' + e.message); }
 }
 
 /** One-off trigger, a minute after edits to Pre CRM (many quick edits → one sync). */
@@ -36,7 +44,12 @@ function CT_delayedSync() {
 
 /** Installable "on edit" trigger (created by CT_setup). Ignores edits to other tabs. */
 function CT_onEdit(e) {
-  var name = e && e.range ? e.range.getSheet().getName() : '';
+  if (!e || !e.range) return;
+  // FSNs typed or pasted in any tab become links straight away.
+  if (CT_SYNC.FSN_AS_LINK) {
+    try { CT_linkFsnsInEdit_(e.range); } catch (err) { console.error('FSN links: ' + err.message); }
+  }
+  var name = e.range.getSheet().getName();
   if (name === CT_SYNC.SELF_SHIP.SHEET) {
     // Self Ship cases must leave Review & Rating Data straight away.
     if (!CT_runSync_({})) CT_scheduleSync_();

@@ -43,6 +43,15 @@ Ship Cases, it is **removed** from Review & Rating Data straight away. The robot
 
 ---
 
+## FSN links (all tabs)
+
+In **every tab**, any column whose heading in row 1 is **FSN** (in any column position) turns
+its values into clickable Flipkart links: straight away when you type or paste, and every hour
+for values written by other scripts. Cells that already hold a formula are left alone.
+To convert everything at once: **📦 Courier Tracking → Make all FSNs clickable (all tabs)**.
+
+---
+
 ## Already set up the tracker before? Do only this
 
 1. In Apps Script, open **`CT_Config`**, select everything (**Ctrl + A**), and paste the new
@@ -63,7 +72,7 @@ The other files (`CT_Utils`, `CT_TrackCourier`, `CT_Delhivery`, `CT_DPWorld`) st
 **Step 1.** Open the main spreadsheet → **Extensions → Apps Script**.
 You'll see your existing script files on the left. **Leave them exactly as they are.**
 
-**Step 2.** Add 7 new files. For **each** row in this table:
+**Step 2.** Add 8 new files. For **each** row in this table:
 1. Click the **+** next to "Files" → **Script**.
 2. Type the name from the right-hand column, then press Enter.
 3. Open the matching file on GitHub, click the **copy** button (two small squares, top
@@ -78,6 +87,7 @@ You'll see your existing script files on the left. **Leave them exactly as they 
 | `apps-script/Delhivery.gs` | `CT_Delhivery` |
 | `apps-script/DPWorld.gs` | `CT_DPWorld` |
 | `apps-script/Sync.gs` | `CT_Sync` |
+| `apps-script/Fsn.gs` | `CT_Fsn` |
 
 > ℹ️ **Leave `appsscript.json` alone.** Your spreadsheet already has this settings file, and
 > it is shared with your other scripts. You don't need to copy ours or change yours.

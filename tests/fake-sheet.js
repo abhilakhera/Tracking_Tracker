@@ -27,12 +27,16 @@ function makeSheet(name, rows, ss, writes) {
       return 0;
     },
     getMaxRows: () => Math.max(data.length, 1000),
+    getLastColumn: () => data.reduce((m, row) => Math.max(m, (row || []).reduce((k, v, i) => (v !== '' && v !== undefined && v !== null ? i + 1 : k), 0)), 0),
     insertRowsAfter() {},
     deleteRow(r) { data.splice(r - 1, 1); writes.push(`${name}!delete R${r}`); },
     getRange(r, c, nr = 1, nc = 1) {
       return {
         getSheet: () => sheet,
         getRow: () => r,
+        getColumn: () => c,
+        getNumRows: () => nr,
+        getNumColumns: () => nc,
         getLastRow: () => r + nr - 1,
         getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (isFormula(get(r + i, c + j)) ? result(get(r + i, c + j)) : get(r + i, c + j) ?? ''))),
         getDisplayValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => shown(get(r + i, c + j)))),

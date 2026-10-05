@@ -10,7 +10,7 @@ const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Fsn.gs', 'Main.gs'];
 const G = 6, I = 8, J = 9, K = 10; // 0-based column indexes in a row array
 
 const { makeSpreadsheet, makeScriptApp, Utilities } = require('./fake-sheet');
