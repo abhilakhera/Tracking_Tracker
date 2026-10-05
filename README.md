@@ -18,7 +18,7 @@ by itself.
         ▲ you type these        ▲ the robot fills these in
 ```
 
-Every 2 hours the robot:
+Every 12 hours (you can change this) the robot:
 
 1. reads the **Tracking ID** (column G) and **Courier** (column H) of each row,
 2. asks that courier "where is this parcel now?",

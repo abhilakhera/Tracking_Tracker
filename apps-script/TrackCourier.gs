@@ -10,32 +10,49 @@
  *                        "Date": "28-Aug-2026", "Time": "09:41", "Location": "Delhi" } ] }
  */
 
-var TC_PARALLEL_REQUESTS = 5; // numbers asked at the same time
-
 /**
- * Track a list of numbers for one courier (key of CONFIG.COURIERS).
- * Returns { trackingId: { status, date } | { error } }.
+ * Track a list of jobs ({ courierKey, id }), one request per number, paced to
+ * stay under the plan's per-minute limit (CONFIG.TRACKCOURIER_REQUESTS_PER_MINUTE).
+ * Returns { 'COURIERKEY|id': { status, date } | { error } | { deferred } }.
+ * "deferred" means "not asked this time": the run pauses and continues a minute later.
  */
-function trackWithTrackCourier_(courierKey, ids) {
+function trackWithTrackCourier_(jobs) {
   var key = getSecret_('TRACKCOURIER_API_KEY');
   if (!key) throw new Error('No TrackCourier.io API key saved. Use the menu: Courier Tracking → Set / change API keys.');
-  var slug = CONFIG.COURIERS[courierKey].trackCourierSlug;
+  var gapMs = Math.ceil(60000 / Math.max(1, CONFIG.TRACKCOURIER_REQUESTS_PER_MINUTE));
 
   var results = {};
-  chunk_(ids, TC_PARALLEL_REQUESTS).forEach(function (batch) {
-    var requests = batch.map(function (id) {
-      return {
-        url: CONFIG.TRACKCOURIER_BASE_URL + '/track?courier=' + encodeURIComponent(slug) +
-          '&tracking_number=' + encodeURIComponent(id),
-        method: 'get',
-        headers: { 'X-API-Key': key, Accept: 'application/json' },
-        muteHttpExceptions: true,
-      };
+  var stopped = false;
+  var fatal = '';        // a problem that affects every number (bad key, plan used up)
+  var lastRequestAt = 0;
+  jobs.forEach(function (job) {
+    var jobKey = job.courierKey + '|' + job.id;
+    if (fatal) { results[jobKey] = { error: fatal }; return; }
+    if (stopped || timeIsUp_()) { results[jobKey] = { deferred: true }; return; }
+
+    var wait = lastRequestAt + gapMs - Date.now();
+    if (wait > 0) Utilities.sleep(wait);
+    lastRequestAt = Date.now();
+
+    var slug = CONFIG.COURIERS[job.courierKey].trackCourierSlug;
+    var response = UrlFetchApp.fetch(CONFIG.TRACKCOURIER_BASE_URL + '/track?courier=' + encodeURIComponent(slug) +
+      '&tracking_number=' + encodeURIComponent(job.id), {
+      method: 'get',
+      headers: { 'X-API-Key': key, Accept: 'application/json' },
+      muteHttpExceptions: true,
     });
-    var responses = UrlFetchApp.fetchAll(requests);
-    responses.forEach(function (response, i) {
-      results[batch[i]] = handleTrackCourierResponse_(response.getResponseCode(), response.getContentText(), slug);
-    });
+    if (response.getResponseCode() === 429) {
+      // Per-minute limit hit anyway: stop asking, continue on the next run.
+      stopped = true;
+      results[jobKey] = { deferred: true };
+      return;
+    }
+    try {
+      results[jobKey] = handleTrackCourierResponse_(response.getResponseCode(), response.getContentText(), slug);
+    } catch (e) {
+      fatal = e.message;
+      results[jobKey] = { error: fatal };
+    }
   });
   return results;
 }
@@ -48,8 +65,7 @@ function handleTrackCourierResponse_(code, body, slug) {
   apiMessage = apiMessage ? shorten_(typeof apiMessage === 'string' ? apiMessage : JSON.stringify(apiMessage)) : shorten_(body);
 
   if (code === 401 || code === 403) throw new Error('TrackCourier.io rejected the API key (HTTP ' + code + '): ' + apiMessage);
-  if (code === 402) throw new Error('TrackCourier.io: plan limit reached (' + apiMessage + ').');
-  if (code === 429) throw new Error('TrackCourier.io: too many requests right now, will retry on the next run (' + apiMessage + ').');
+  if (code === 402) throw new Error('TrackCourier.io: monthly limit of your plan reached (' + apiMessage + '). Upgrade the plan or wait for next month.');
   if (code === 404) return { error: 'TrackCourier.io found no shipment with this number (courier "' + slug + '"). ' + apiMessage };
   if (code !== 200 || !json) return { error: 'TrackCourier.io HTTP ' + code + ': ' + apiMessage };
   return parseTrackCourierResult_(json);

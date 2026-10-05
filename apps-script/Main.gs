@@ -77,7 +77,10 @@ function testConnections() {
 
 function enableAutoUpdate() {
   deleteTriggers_('scheduledTrackingUpdate');
-  ScriptApp.newTrigger('scheduledTrackingUpdate').timeBased().everyHours(CONFIG.AUTO_UPDATE_EVERY_HOURS).create();
+  var schedule = ScriptApp.newTrigger('scheduledTrackingUpdate').timeBased();
+  // Google accepts every 1, 2, 4, 6, 8 or 12 hours; 24 means once a day (around 9 AM).
+  if (CONFIG.AUTO_UPDATE_EVERY_HOURS >= 24) schedule.everyDays(1).atHour(9).create();
+  else schedule.everyHours(CONFIG.AUTO_UPDATE_EVERY_HOURS).create();
   SpreadsheetApp.getUi().alert('Automatic updates are ON. Statuses refresh every ' +
     CONFIG.AUTO_UPDATE_EVERY_HOURS + ' hour(s), even when the sheet is closed.');
 }
@@ -103,19 +106,34 @@ function resolveProvider_(courierKey) {
   return p;
 }
 
-/** Ask the right API about a list of tracking IDs that all belong to one courier. */
-function trackCourier_(courierKey, ids) {
+// Providers in the order they are asked. TrackCourier.io goes last because it is
+// rate-limited: if it has to pause, the rows after the pause point only need
+// re-checking with the free providers.
+var PROVIDER_ORDER_ = ['DELHIVERY', 'DPWORLD_WEB', 'TRACKCOURIER'];
+
+/** Time after which a run stops asking APIs and pauses (set by runUpdate_). */
+var RUN_DEADLINE_ = 0;
+
+function timeIsUp_() {
+  return RUN_DEADLINE_ > 0 && Date.now() > RUN_DEADLINE_;
+}
+
+/**
+ * Ask one provider about a list of jobs ({ courierKey, id }).
+ * Returns { 'COURIERKEY|id': { status, date } | { error } | { deferred } }.
+ */
+function trackWithProvider_(provider, jobs) {
+  var out = {};
   try {
-    var provider = resolveProvider_(courierKey);
-    if (provider === 'DELHIVERY') return trackWithDelhivery_(ids);
-    if (provider === 'DPWORLD_WEB') return trackWithDpWorld_(ids);
-    return trackWithTrackCourier_(courierKey, ids);
+    if (provider === 'TRACKCOURIER') return trackWithTrackCourier_(jobs);
+    var ids = jobs.map(function (j) { return j.id; });
+    var byId = provider === 'DELHIVERY' ? trackWithDelhivery_(ids) : trackWithDpWorld_(ids);
+    jobs.forEach(function (j) { out[j.courierKey + '|' + j.id] = byId[j.id]; });
   } catch (e) {
-    // A problem that affects the whole group (bad key, no credits, ...).
-    var out = {};
-    ids.forEach(function (id) { out[id] = { error: e.message }; });
-    return out;
+    // A problem that affects every row of this provider (bad key, plan limit, ...).
+    jobs.forEach(function (j) { out[j.courierKey + '|' + j.id] = { error: e.message }; });
   }
+  return out;
 }
 
 /**
@@ -134,11 +152,12 @@ function runUpdate_(options) {
   try {
     deleteTriggers_('continueTrackingUpdate');
     var startedAt = Date.now();
+    RUN_DEADLINE_ = startedAt + CONFIG.MAX_RUNTIME_MS;
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = dataSheet_(ss);
     var props = PropertiesService.getScriptProperties();
     var log = new RunLog_(ss, !!options.resume);
-    var stats = { updated: 0, pending: 0, errors: 0, skipped: 0 };
+    var stats = { updated: 0, errors: 0, skipped: 0 };
 
     var firstRow = CONFIG.HEADER_ROWS + 1;
     var lastRow = sheet.getLastRow();
@@ -149,35 +168,53 @@ function runUpdate_(options) {
     }
     if (options.resume) firstRow = Math.max(firstRow, Number(props.getProperty('RESUME_ROW')) || firstRow);
     props.deleteProperty('RESUME_ROW');
+    // How many times in a row this run has paused and continued.
+    var resumes = options.resume ? (Number(props.getProperty('RESUME_COUNT')) || 0) + 1 : 0;
+    props.setProperty('RESUME_COUNT', String(resumes));
 
     notify_(options, 'Checking shipments…');
     var paused = false;
-    for (var r = firstRow; r <= lastRow; r += CONFIG.ROWS_PER_BLOCK) {
-      if (Date.now() - startedAt > CONFIG.MAX_RUNTIME_MS) {
-        props.setProperty('RESUME_ROW', String(r));
-        ScriptApp.newTrigger('continueTrackingUpdate').timeBased().after(60 * 1000).create();
-        log.add(r, '', '', 'INFO', 'Paused at row ' + r + ' (Google time limit). Will continue automatically in about a minute.');
-        paused = true;
-        break;
+    var pauseAt = function (row, why) {
+      paused = true;
+      if (options.onlyRows) {
+        // A "selected rows" run is not resumed on its own, so it never touches other rows.
+        log.add(row, '', '', 'INFO', 'Stopped at row ' + row + ' (' + why + '). Select the remaining rows and run "Update selected rows only" again in a minute.');
+        return;
       }
-      processBlock_(sheet, r, Math.min(CONFIG.ROWS_PER_BLOCK, lastRow - r + 1), options, log, stats);
+      if (resumes >= CONFIG.MAX_AUTO_RESUMES) {
+        // Something keeps blocking progress (e.g. the plan's limit). Stop retrying;
+        // the next scheduled update starts again from the top.
+        log.add(row, '', '', 'ERROR', 'Stopped at row ' + row + ' (' + why + ') after ' + resumes +
+          ' automatic continuations. The next scheduled update will try again.');
+        return;
+      }
+      props.setProperty('RESUME_ROW', String(row));
+      ScriptApp.newTrigger('continueTrackingUpdate').timeBased().after(60 * 1000).create();
+      log.add(row, '', '', 'INFO', 'Paused at row ' + row + ' (' + why + '). Will continue automatically in about a minute.');
+    };
+    for (var r = firstRow; r <= lastRow; r += CONFIG.ROWS_PER_BLOCK) {
+      if (timeIsUp_()) { pauseAt(r, 'Google time limit'); break; }
+      var deferredRow = processBlock_(sheet, r, Math.min(CONFIG.ROWS_PER_BLOCK, lastRow - r + 1), options, log, stats);
+      if (deferredRow) { pauseAt(deferredRow, 'time or TrackCourier.io per-minute limit'); break; }
     }
 
     log.flush();
     var summary = 'Updated ' + stats.updated + ' row(s). ' +
-      (stats.pending ? stats.pending + ' waiting for first data. ' : '') +
       (stats.errors ? stats.errors + ' problem(s), see the "' + CONFIG.LOG_SHEET_NAME + '" tab. ' : '') +
       (stats.skipped ? stats.skipped + ' finished/blank row(s) skipped. ' : '') +
-      (paused ? 'Paused because of the time limit; it will continue on its own.' : '');
+      (paused ? 'Paused (time or speed limit); it will continue on its own in a minute.' : '');
     notify_(options, summary);
   } finally {
     lock.releaseLock();
   }
 }
 
-/** Process `count` rows starting at `startRow`: read, track, write. */
+/**
+ * Process `count` rows starting at `startRow`: read, track, write.
+ * Returns the first sheet row that had to be postponed (0 if none).
+ */
 function processBlock_(sheet, startRow, count, options, log, stats) {
-  if (count <= 0) return;
+  if (count <= 0) return 0;
   var cId = columnNumber_(CONFIG.COLUMNS.TRACKING_ID);
   var cCourier = columnNumber_(CONFIG.COLUMNS.COURIER);
   var cStatus = columnNumber_(CONFIG.COLUMNS.STATUS);
@@ -188,8 +225,10 @@ function processBlock_(sheet, startRow, count, options, log, stats) {
   var values = sheet.getRange(startRow, minCol, count, maxCol - minCol + 1).getValues();
   var col = function (c) { return c - minCol; };
 
-  // Group the rows that need checking by courier: { DELHIVERY: { id: [rowIndex, ...] }, ... }
-  var groups = {};
+  // Collect the rows that need checking, in row order, grouped by provider.
+  // The same number on several rows is asked only once.
+  var rowsFor = {};    // 'COURIERKEY|id' → [row index, ...]
+  var jobsFor = {};    // provider → [{ courierKey, id }, ...]
   values.forEach(function (row, i) {
     var sheetRow = startRow + i;
     if (options.onlyRows && !options.onlyRows[sheetRow]) return;
@@ -205,33 +244,40 @@ function processBlock_(sheet, startRow, count, options, log, stats) {
         : 'Courier Partner (column ' + CONFIG.COLUMNS.COURIER + ') is empty.');
       return;
     }
-    groups[key] = groups[key] || {};
-    (groups[key][id] = groups[key][id] || []).push(i);
+    var jobKey = key + '|' + id;
+    if (!rowsFor[jobKey]) {
+      rowsFor[jobKey] = [];
+      var provider = resolveProvider_(key);
+      (jobsFor[provider] = jobsFor[provider] || []).push({ courierKey: key, id: id });
+    }
+    rowsFor[jobKey].push(i);
   });
 
   var statusOut = values.map(function (row) { return [row[col(cStatus)]]; });
   var dateOut = values.map(function (row) { return [row[col(cDate)]]; });
   var changed = false;
+  var firstDeferred = 0;
   var tz = sheet.getParent().getSpreadsheetTimeZone();
 
-  Object.keys(groups).forEach(function (key) {
-    var ids = Object.keys(groups[key]);
-    var results = trackCourier_(key, ids);
-    ids.forEach(function (id) {
-      var res = results[id] || { error: 'No answer from the API for this number.' };
-      groups[key][id].forEach(function (i) {
+  PROVIDER_ORDER_.forEach(function (provider) {
+    var jobs = jobsFor[provider];
+    if (!jobs) return;
+    var results = trackWithProvider_(provider, jobs);
+    jobs.forEach(function (job) {
+      var jobKey = job.courierKey + '|' + job.id;
+      var res = results[jobKey] || { error: 'No answer from the API for this number.' };
+      var label = CONFIG.COURIERS[job.courierKey].label;
+      rowsFor[jobKey].forEach(function (i) {
         var sheetRow = startRow + i;
-        var label = CONFIG.COURIERS[key].label;
-        if (res.error) {
+        if (res.deferred) {
+          if (!firstDeferred || sheetRow < firstDeferred) firstDeferred = sheetRow;
+        } else if (res.error) {
           stats.errors++;
-          log.add(sheetRow, id, label, 'ERROR', res.error);
-        } else if (res.pending) {
-          stats.pending++;
-          log.add(sheetRow, id, label, 'INFO', res.message);
+          log.add(sheetRow, job.id, label, 'ERROR', res.error);
         } else {
           statusOut[i][0] = res.status;
           dateOut[i][0] = toSheetDate_(res.date, tz);
-          if (!res.date) log.add(sheetRow, id, label, 'INFO', 'Status found but the courier gave no date.');
+          if (!res.date) log.add(sheetRow, job.id, label, 'INFO', 'Status found but the courier gave no date.');
           stats.updated++;
           changed = true;
         }
@@ -239,11 +285,13 @@ function processBlock_(sheet, startRow, count, options, log, stats) {
     });
   });
 
-  if (!changed) return;
-  sheet.getRange(startRow, cStatus, count, 1).setValues(statusOut);
-  var dateRange = sheet.getRange(startRow, cDate, count, 1);
-  dateRange.setValues(dateOut);
-  dateRange.setNumberFormat(CONFIG.DATE_FORMAT);
+  if (changed) {
+    sheet.getRange(startRow, cStatus, count, 1).setValues(statusOut);
+    var dateRange = sheet.getRange(startRow, cDate, count, 1);
+    dateRange.setValues(dateOut);
+    dateRange.setNumberFormat(CONFIG.DATE_FORMAT);
+  }
+  return firstDeferred;
 }
 
 function dataSheet_(ss) {

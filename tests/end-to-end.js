@@ -8,11 +8,11 @@ const vm = require('vm');
 const assert = require('assert');
 
 // ── fake spreadsheet ──
-function makeSheet(name, rows) {
+function makeSheet(name, rows, ss) {
   const data = rows.map((r) => r.slice());
   const formats = {};
   const cell = (r, c) => { while (data.length < r) data.push([]); return data[r - 1][c - 1]; };
-  const sheet = {
+  return {
     data, formats,
     getName: () => name,
     getLastRow: () => data.length,
@@ -27,90 +27,142 @@ function makeSheet(name, rows) {
     clearContents() { data.length = 0; },
     getParent: () => ss,
   };
-  return sheet;
 }
 const row = (id, courier, status = '', date = '') => ['', '', '', '', '', '', id, courier, status, date];
-const main = makeSheet('Orders', [
-  ['', '', '', '', '', '', 'Tracking ID', 'Courier Partner', 'Tracking Status', 'Status Date'],
-  row('1111111111111', 'Delhivery'),
-  row('SX9001', 'Safexpress'),
-  row('DPW777', 'DP World'),
-  row('2222222222222', 'delhivery', 'Delivered', 'old'),
-  row('', 'Delhivery'),
-  row('X1', 'Blue Dart'),
-  row('SX9002', 'Safe Express'),
-]);
-const sheets = [main];
-const ss = {
-  getSheets: () => sheets,
-  getSheetByName: (n) => sheets.find((s) => s.getName() === n) || null,
-  insertSheet: (n) => { const s = makeSheet(n, []); sheets.push(s); return s; },
-  getSpreadsheetTimeZone: () => 'Asia/Kolkata',
-  toast() {},
-};
-
-// ── fake APIs ──
-const calls = [];
 const json = (code, body) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(body) });
-function fetch(url, opts) {
-  calls.push('GET ' + url);
-  assert.strictEqual(opts.headers.Authorization, 'Token DTOKEN');
-  return json(200, { ShipmentData: [{ Shipment: { AWB: '1111111111111', Status: { Status: 'In Transit', StatusDateTime: '2026-10-03T23:30:00', StatusLocation: 'Pune_Hub', Instructions: 'Bag received' } } }] });
-}
-function fetchAll(requests) {
-  return requests.map((req) => {
-    calls.push('GET ' + req.url);
-    assert.strictEqual(req.headers['X-API-Key'], 'TCKEY');
-    assert.ok(req.url.startsWith('https://api.trackcourier.io/v1/track?courier=safexpress&tracking_number='), req.url);
-    if (req.url.endsWith('SX9001')) {
-      return json(200, { ShipmentState: 'Delivered', MostRecentStatus: 'Delivered', Checkpoints: [{ Activity: 'Delivered', Date: '02-Oct-2026', Time: '10:15', Location: 'Chennai' }] });
+const delivered = (place) => json(200, { ShipmentState: 'Delivered', MostRecentStatus: 'Delivered', Checkpoints: [{ Activity: 'Delivered', Date: '02-Oct-2026', Time: '10:15', Location: place }] });
+
+/** Load the robot into a sandbox with a fake sheet and fake APIs. */
+function setup(rows, props, trackCourierReply) {
+  const ss = {
+    getSheets: () => sheets,
+    getSheetByName: (n) => sheets.find((s) => s.getName() === n) || null,
+    insertSheet: (n) => { const s = makeSheet(n, [], ss); sheets.push(s); return s; },
+    getSpreadsheetTimeZone: () => 'Asia/Kolkata',
+    toast() {},
+  };
+  const main = makeSheet('Orders', [['', '', '', '', '', '', 'Tracking ID', 'Courier Partner', 'Tracking Status', 'Status Date'], ...rows], ss);
+  const sheets = [main];
+  const calls = [];
+  const triggers = [];
+  let slept = 0;
+  function fetch(url, opts) {
+    calls.push('GET ' + url);
+    if (url.startsWith('https://track.delhivery.com/')) {
+      assert.strictEqual(opts.headers.Authorization, 'Token DTOKEN');
+      return json(200, { ShipmentData: [{ Shipment: { AWB: '1111111111111', Status: { Status: 'In Transit', StatusDateTime: '2026-10-03T23:30:00', StatusLocation: 'Pune_Hub', Instructions: 'Bag received' } } }] });
     }
-    return json(404, { message: 'not found' });
+    assert.strictEqual(opts.headers['X-API-Key'], 'TCKEY');
+    const m = url.match(/^https:\/\/api\.trackcourier\.io\/v1\/track\?courier=([a-z]+)&tracking_number=(.+)$/);
+    assert.ok(m, url);
+    return trackCourierReply(m[1], decodeURIComponent(m[2]));
+  }
+  const trigger = { timeBased: () => trigger, after: (ms) => { triggers.push(ms); return trigger; }, create: () => trigger };
+  const ctx = vm.createContext({
+    console: { log() {}, error: console.error },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ss },
+    UrlFetchApp: { fetch },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: () => trigger },
+    Utilities: {
+      sleep: (ms) => { slept += ms; }, // don't really wait in tests
+      // Asia/Kolkata only, enough for the test
+      formatDate: (d) => new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 10),
+      parseDate: (s) => new Date(Date.parse(s + 'T00:00:00+05:30')),
+    },
   });
+  for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Main.gs']) {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
+  }
+  return {
+    run: (fn) => vm.runInContext(fn + '()', ctx),
+    data: main.data, formats: main.formats, calls, triggers, props,
+    log: () => ss.getSheetByName('Tracking Log').data.slice(1).map((r) => `${r[1]} ${r[4]} ${r[5]}`),
+    slept: () => slept,
+  };
 }
-
-const props = { DELHIVERY_TOKEN: 'DTOKEN', TRACKCOURIER_API_KEY: 'TCKEY' };
-const ctx = vm.createContext({
-  console: { log() {}, error: console.error },
-  SpreadsheetApp: { getActiveSpreadsheet: () => ss },
-  UrlFetchApp: { fetch, fetchAll },
-  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
-  LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
-  ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {} },
-  Utilities: {
-    // Asia/Kolkata only, enough for the test
-    formatDate: (d) => new Date(d.getTime() + 330 * 60000).toISOString().slice(0, 10),
-    parseDate: (s) => new Date(Date.parse(s + 'T00:00:00+05:30')),
-  },
-});
-for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Main.gs']) {
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
-}
-vm.runInContext('scheduledTrackingUpdate()', ctx);
-
-const d = main.data;
 const iso = (x) => (x instanceof Date ? x.toISOString() : x);
-// Delhivery: 23:30 IST on 3 Oct → stored as the date 3 Oct (midnight IST)
-assert.strictEqual(d[1][8], 'In Transit - Bag received (Pune_Hub)');
-assert.strictEqual(iso(d[1][9]), '2026-10-02T18:30:00.000Z');
-// Safexpress via TrackCourier.io
-assert.strictEqual(d[2][8], 'Delivered (Chennai)');
-assert.strictEqual(iso(d[2][9]), '2026-10-01T18:30:00.000Z');
-// DP World not connected yet → left blank, explained in the log
-assert.strictEqual(d[3][8], '');
-// already delivered row untouched
-assert.strictEqual(d[4][8], 'Delivered');
-assert.strictEqual(d[4][9], 'old');
-// unknown Safexpress number → left blank, explained in the log
-assert.strictEqual(d[7][8], '');
-assert.strictEqual(main.formats['2,10'], 'dd-mmm-yyyy');
 
-const log = ss.getSheetByName('Tracking Log').data;
-const msgs = log.slice(1).map((r) => `${r[1]} ${r[4]} ${r[5]}`);
-assert.ok(msgs.some((m) => m.startsWith('7 ERROR Courier name not recognised')), msgs.join('\n'));
-assert.ok(msgs.some((m) => m.startsWith('4 ERROR DP World tracking is not connected yet')), msgs.join('\n'));
-assert.ok(msgs.some((m) => m.startsWith('8 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
-assert.ok(!calls.some((c) => c.includes('2222222222222')), 'delivered row should not be re-checked');
+// ── Scenario 1: a normal run with every kind of row ──
+{
+  const t = setup([
+    row('1111111111111', 'Delhivery'),
+    row('SX9001', 'Safexpress'),
+    row('DPW777', 'DP World'),
+    row('2222222222222', 'delhivery', 'Delivered', 'old'),
+    row('', 'Delhivery'),
+    row('X1', 'Blue Dart'),
+    row('SX9002', 'Safe Express'),
+  ], { DELHIVERY_TOKEN: 'DTOKEN', TRACKCOURIER_API_KEY: 'TCKEY' }, (slug, id) => {
+    assert.strictEqual(slug, 'safexpress');
+    return id === 'SX9001' ? delivered('Chennai') : json(404, { message: 'not found' });
+  });
+  t.run('scheduledTrackingUpdate');
+  const d = t.data;
+  // Delhivery: 23:30 IST on 3 Oct → stored as the date 3 Oct (midnight IST)
+  assert.strictEqual(d[1][8], 'In Transit - Bag received (Pune_Hub)');
+  assert.strictEqual(iso(d[1][9]), '2026-10-02T18:30:00.000Z');
+  // Safexpress via TrackCourier.io
+  assert.strictEqual(d[2][8], 'Delivered (Chennai)');
+  assert.strictEqual(iso(d[2][9]), '2026-10-01T18:30:00.000Z');
+  // DP World not connected yet → left blank, explained in the log
+  assert.strictEqual(d[3][8], '');
+  // already delivered row untouched
+  assert.strictEqual(d[4][8], 'Delivered');
+  assert.strictEqual(d[4][9], 'old');
+  // unknown Safexpress number → left blank, explained in the log
+  assert.strictEqual(d[7][8], '');
+  assert.strictEqual(t.formats['2,10'], 'dd-mmm-yyyy');
+  const msgs = t.log();
+  assert.ok(msgs.some((m) => m.startsWith('7 ERROR Courier name not recognised')), msgs.join('\n'));
+  assert.ok(msgs.some((m) => m.startsWith('4 ERROR DP World tracking is not connected yet')), msgs.join('\n'));
+  assert.ok(msgs.some((m) => m.startsWith('8 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
+  assert.ok(!t.calls.some((c) => c.includes('2222222222222')), 'delivered row should not be re-checked');
+  // Free plan = 10 requests/minute → the 2nd TrackCourier request waits ~6 s.
+  assert.ok(t.slept() >= 5000, 'requests should be paced, slept ' + t.slept() + ' ms');
+  assert.strictEqual(t.triggers.length, 0, 'no pause expected');
+  console.log('Scenario 1 (normal run): OK');
+}
 
-console.log('End-to-end run: OK');
-console.log('API calls made:\n  ' + calls.join('\n  '));
+// ── Scenario 2: speed limit hit mid-run → pause, then continue without re-asking ──
+{
+  let replies = 0;
+  const t = setup([
+    row('42387010178824', 'Delhivery'),   // no Delhivery token → TrackCourier.io
+    row('100041695709', 'Safexpress'),
+    row('42387010178931', 'Delhivery'),
+    row('100041880732', 'Safexpress'),
+  ], { TRACKCOURIER_API_KEY: 'TCKEY' }, (slug, id) => {
+    replies++;
+    if (replies === 3) return json(429, { message: 'Too many requests' });
+    return delivered(slug + '-' + id);
+  });
+  t.run('scheduledTrackingUpdate');
+  assert.strictEqual(t.data[1][8], 'Delivered (delhivery-42387010178824)');
+  assert.strictEqual(t.data[2][8], 'Delivered (safexpress-100041695709)');
+  assert.strictEqual(t.data[3][8], '');
+  assert.strictEqual(t.props.RESUME_ROW, '4', 'should resume at the first row that was not asked');
+  assert.deepStrictEqual(t.triggers, [60000]);
+
+  t.calls.length = 0;
+  t.run('continueTrackingUpdate');
+  assert.deepStrictEqual(t.calls.map((c) => c.split('tracking_number=')[1]), ['42387010178931', '100041880732'],
+    'the continuation must only ask the rows that were not done');
+  assert.strictEqual(t.data[3][8], 'Delivered (delhivery-42387010178931)');
+  assert.strictEqual(t.data[4][8], 'Delivered (safexpress-100041880732)');
+  assert.strictEqual(t.props.RESUME_ROW, undefined);
+  console.log('Scenario 2 (pause and continue): OK');
+}
+
+// ── Scenario 3: key rejected halfway keeps what was already fetched ──
+{
+  let replies = 0;
+  const t = setup([row('SXA', 'Safexpress'), row('SXB', 'Safexpress'), row('SXC', 'Safexpress')],
+    { TRACKCOURIER_API_KEY: 'TCKEY' }, () => (++replies === 1 ? delivered('Pune') : json(401, { message: 'invalid key' })));
+  t.run('scheduledTrackingUpdate');
+  assert.strictEqual(t.data[1][8], 'Delivered (Pune)');
+  assert.strictEqual(t.calls.length, 2, 'stop asking after the key is rejected');
+  assert.ok(t.log().some((m) => m.startsWith('4 ERROR TrackCourier.io rejected the API key')), t.log().join('\n'));
+  console.log('Scenario 3 (bad key midway): OK');
+}

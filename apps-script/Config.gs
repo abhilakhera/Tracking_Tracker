@@ -46,8 +46,10 @@ var CONFIG = {
   SHOW_DETAIL: true,
   SHOW_LOCATION: true,
 
-  // Automatic updates run every N hours. Allowed values: 1, 2, 4, 6, 8, 12.
-  AUTO_UPDATE_EVERY_HOURS: 2,
+  // Automatic updates run every N hours. Allowed values: 1, 2, 4, 6, 8, 12, or 24 (once a day).
+  // Each run uses 1 TrackCourier.io request per undelivered parcel, so running less
+  // often saves your monthly requests. See "How many requests will I use?" in the guide.
+  AUTO_UPDATE_EVERY_HOURS: 12,
 
   // Name of the tab where each run writes its problems and notes. The script creates it.
   LOG_SHEET_NAME: 'Tracking Log',
@@ -85,8 +87,13 @@ var CONFIG = {
   DELHIVERY_BASE_URL: 'https://track.delhivery.com',
   TRACKCOURIER_BASE_URL: 'https://api.trackcourier.io/v1',
 
+  // TrackCourier.io allows a set number of requests per minute, depending on your plan
+  // (Free: 10, Starter: 60, Pro: 300). Set this to your plan's number.
+  TRACKCOURIER_REQUESTS_PER_MINUTE: 10,
+
   // Technical limits. Google stops a script after 6 minutes, so the script pauses
   // before that and resumes automatically a minute later.
   ROWS_PER_BLOCK: 200,
   MAX_RUNTIME_MS: 4.5 * 60 * 1000,
+  MAX_AUTO_RESUMES: 50,
 };

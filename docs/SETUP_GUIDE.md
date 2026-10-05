@@ -76,7 +76,7 @@ A new tab, **Tracking Log**, lists any row that couldn't be updated and why.
 For now this includes the DP World rows (see Part 5).
 
 **Step 13.** **📦 Courier Tracking → Turn ON automatic updates.**
-The robot now runs every 2 hours by itself, even when the sheet is closed. 🎉
+The robot now runs every 12 hours by itself, even when the sheet is closed. 🎉
 
 ---
 
@@ -89,24 +89,38 @@ The robot now runs every 2 hours by itself, even when the sheet is closed. 🎉
 
 ---
 
-## Part 5: DP World (one more step needed)
+## Part 5: How many TrackCourier.io requests will I use?
 
-TrackCourier.io doesn't track DP World, so the robot will read **DP World's own
-tracking website**, the same page you'd open yourself. To build that, I need to see how
-the page gets its data. In **Google Chrome on a computer**:
+Every time the robot checks one parcel, it uses **1 request** from your TrackCourier.io plan.
+Delivered parcels are not checked again.
 
-1. Open the DP World page where you normally track a docket.
-2. Press **F12**. A panel opens; click **Network** at the top of it.
-3. Type a real docket number on the page and click **Track**.
-4. Lines appear in the panel. Click the ones named like *track*, *search*, *docket* or
-   *shipment*. When one shows the tracking details in its **Preview** or **Response** tab,
-   right-click it and choose **Copy → Copy as cURL (bash)**.
-5. Send me that copied text, plus a screenshot of the result shown on the page.
+> **Requests per month ≈ parcels not yet delivered × checks per day × 30**
 
-If that's difficult, just send **the link of the DP World tracking page** and **one docket number**.
+Example: 40 parcels on the way at any time, checked twice a day (every 12 hours):
+40 × 2 × 30 = **2,400 requests a month**.
 
-Until then, nothing breaks: DP World rows simply stay as they are and are listed in the
-Tracking Log tab.
+| TrackCourier.io plan | Requests per month | Requests per minute |
+|---|---|---|
+| Free | 100 | 10 |
+| Starter | 5,000 | 60 |
+| Pro | 50,000 | 300 |
+
+The **Free** plan is only enough for testing. To save requests:
+- Check less often: in `Config.gs`, `AUTO_UPDATE_EVERY_HOURS: 12` → `24` (once a day).
+- Get the free **Delhivery token** (below). Then Delhivery parcels use no TrackCourier.io requests at all.
+
+**After you upgrade**, open `Config.gs` and set `TRACKCOURIER_REQUESTS_PER_MINUTE` to your plan's
+number (60 for Starter), so the robot works faster. On the Free plan it checks 10 parcels a minute
+and simply continues by itself if it needs more time.
+
+---
+
+## Part 6: DP World (being set up)
+
+TrackCourier.io doesn't track DP World, so the robot will read **DP World's own tracking page**
+(<https://www.logistics.dpworld.com/tracking/in/express>), the same page you use yourself.
+That part is still being built. Until it's ready, nothing breaks: DP World rows stay as they
+are and are listed in the Tracking Log tab.
 
 ---
 
