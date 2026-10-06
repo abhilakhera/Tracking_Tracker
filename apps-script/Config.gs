@@ -114,7 +114,7 @@ var CT_CONFIG = {
 
 /**
  * ============================================================================
- *  ORDER SYNC: SETTINGS (Pre CRM → Order Tracking → Review & Rating Data)
+ *  ORDER SYNC: SETTINGS (Pre CRM → Order Tracking → Review Calling)
  * ============================================================================
  *  Letters are the columns in each tab. Row 1 of every tab holds the headings.
  */
@@ -148,14 +148,14 @@ var CT_SYNC = {
     ORDER_ID: 'C', ORDER_ITEM_ID: 'D', REQUEST_TYPE: 'K', REFUND_STATUS: 'S',
   },
 
-  // Review & Rating Data. The robot fills A-G and M; H-L are your team's and are never changed.
+  // Review Calling. The robot fills A-G and M; H-L are your team's and are never changed.
   REVIEW: {
-    SHEET: 'Review & Rating Data',
+    SHEET: 'Review Calling',
     HEADER_ROWS: 1,
     ORDER_ID: 'A', ORDER_DATE: 'B', FSN: 'C', CATEGORY: 'D', NAME: 'E', PHONE: 'F',
     DELIVERY_DATE: 'G', ORDER_ITEM_ID: 'M',
   },
-  // A delivered product appears in Review & Rating Data this many days after its Status Date.
+  // A delivered product appears in Review Calling this many days after its Status Date.
   REVIEW_AFTER_DAYS: 2,
 
   // The sync also runs on its own every N hours (1, 2, 4, 6, 8 or 12).

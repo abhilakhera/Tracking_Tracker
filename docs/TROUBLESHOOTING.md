@@ -32,8 +32,8 @@ updated, with the reason.
 | "This row has a Tracking ID but no Order Id" | A row you added by hand (e.g. a test row) | Type its Order Id in column A (the robot then fills the rest), or delete the row. |
 | "Removed: …" | The order no longer qualifies in Pre CRM, or was an extra copy | Nothing to do. The complete row (with any Tracking ID / Courier / Remark) is in the **Removed Orders** tab. |
 | "This product is also on Pre CRM row …" | Pre CRM has the same product twice | Order Tracking then gets a row for each. If that's a mistake, delete the extra row in Pre CRM; the extra Order Tracking row is removed on the next sync (unless you typed a Tracking ID in it). |
-| FSNs in Order Tracking / Review & Rating Data aren't clickable | A sheet's `onEdit` script only reacts to edits made by a person, never to values written by a script | The sync writes FSNs as Flipkart links itself (`FSN_AS_LINK: true` in `CT_Config`). Update `CT_Sync` and `CT_Config`, then **Sync orders now**. |
-| A delivered order isn't in Review & Rating Data yet | It appears 2 days after its Status Date | Wait; or check it isn't in Self Ship Cases. |
+| FSNs in Order Tracking / Review Calling aren't clickable | A sheet's `onEdit` script only reacts to edits made by a person, never to values written by a script | The sync writes FSNs as Flipkart links itself (`FSN_AS_LINK: true` in `CT_Config`). Update `CT_Sync` and `CT_Config`, then **Sync orders now**. |
+| A delivered order isn't in Review Calling yet | It appears 2 days after its Status Date | Wait; or check it isn't in Self Ship Cases. |
 | Changes in Pre CRM don't show up | The sync runs about a minute after an edit, and every hour | Wait a minute, or **📦 Courier Tracking → Sync orders now**. |
 
 ## Small changes you can make in `CT_Config`
@@ -43,7 +43,7 @@ updated, with the reason.
 | A different tab | `SHEET_NAME: 'Order Tracking',` (your tab name) |
 | Different columns | the letters under `COLUMNS:` (tracking) or `CT_SYNC` (order sync) |
 | A different start date for orders | `INCLUDE_ORDERS_FROM: '2026-09-20',` (year-month-day) |
-| Review & Rating after more/fewer days | `REVIEW_AFTER_DAYS: 2,` |
+| Review Calling after more/fewer days | `REVIEW_AFTER_DAYS: 2,` |
 | No Brief Status column | `BRIEF_STATUS: '',` |
 | Date shown as 04/10/2026 | `DATE_FORMAT: 'dd/mm/yyyy',` |
 | Shorter status text (no place name) | `SHOW_LOCATION: false,` |
