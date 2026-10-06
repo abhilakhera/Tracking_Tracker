@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
-const { makeSpreadsheet, makeScriptApp, Utilities } = require('./fake-sheet');
+const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
 
 const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Fsn.gs', 'Main.gs'];
 const DAY = 86400000;
@@ -33,18 +33,19 @@ function load(tabs, extra = {}) {
   const ss = makeSpreadsheet(tabs);
   const triggers = [];
   const props = {};
+  const locks = makeLockService();
   const ctx = vm.createContext({
     console: { log() {}, error: console.error },
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, getUi: () => ({ alert() {} }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
-    LockService: { getScriptLock: () => { throw new Error('must not use the shared script lock'); } },
+    LockService: locks.service,
     ScriptApp: makeScriptApp(triggers),
     UrlFetchApp: { fetch: () => { throw new Error('the order sync must not call any API'); } },
     Utilities,
   });
   for (const f of FILES) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
   return {
-    ss, ctx, triggers, props,
+    ss, ctx, triggers, props, locks,
     run: (code) => vm.runInContext(code, ctx),
     tab: (n) => ss.getSheetByName(n).data,
     log: () => ss.getSheetByName('Order Sync Log').data.slice(1).map((r) => `${r[1]} | ${r[2]} | ${r[3]} | ${r[4]}`),
@@ -348,7 +349,7 @@ scenario('orders already in Order Tracking that become "Do Not Dispatch" are rem
   assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD3', 'OD4']);
   const log = t.log();
   assert.ok(log.some((m) => m.includes('OD2') && m.includes('Removed: Pre CRM says not to dispatch')), log.join('\n'));
-  assert.ok(log.some((m) => m.includes('OD3') && m.includes('has a Tracking ID or Courier filled in, so it is kept')), log.join('\n'));
+  assert.ok(log.some((m) => m.includes('OD3') && m.includes('has a Tracking ID, Courier or Remark typed in, so it is kept')), log.join('\n'));
   // A second sync changes nothing more.
   t.run('CT_syncNow()');
   assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD3', 'OD4']);
@@ -366,6 +367,63 @@ scenario('no rows are removed while the tracking update is running (done on the 
   delete t.props.CT_RESUME_ROW;
   t.run('CT_syncNow()');
   assert.strictEqual(t.tab('Order Tracking').length, 1);
+});
+
+// ── 12. Duplicates ──
+scenario('a second sync starting while one is running does nothing (this is how duplicates appeared)', () => {
+  const t = load({
+    'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' })],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id'])], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  // While the first sync is reading Pre CRM, a second one starts (e.g. hourly + an edit at the same moment).
+  const preSheet = t.ss.getSheetByName('Pre CRM');
+  const real = preSheet.getRange.bind(preSheet);
+  let second = null;
+  preSheet.getRange = (...a) => { if (second === null) second = t.run('CT_runSync_({})'); return real(...a); };
+  t.run('CT_syncNow()');
+  assert.strictEqual(second, false, 'the second sync must not run');
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => r[0]), ['OD1'], 'exactly one row');
+  assert.ok(!t.locks.state.held, 'the lock is released');
+});
+
+scenario('duplicate rows of the same product are removed, keeping the one with your typed data', () => {
+  const row = (o, item, g = '', h = '', m = '') => [o, ist(2026, 9, 21), 'S' + item, link('F' + item), 'N', 1, g, h, '', '', '', '', m, '', '', item];
+  const t = load({
+    'Pre CRM': [PRE_HEADER,
+      pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' }),
+      pre({ sku: 'S2', fsn: 'F2', order: 'OD2', item: '2', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' }),
+      pre({ sku: 'S3', fsn: 'F3', order: 'OD3', item: '3', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' }),
+      pre({ sku: 'S4', fsn: 'F4', order: 'OD4', item: '4', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' })],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
+      row('OD1', '1'), row('OD1', '1', 'TRK1', 'Delhivery'), row('OD1', '1'),      // keep the one with the Tracking ID
+      row('OD2', '2', 'TRKa', 'Delhivery'), row('OD2', '2', 'TRKb', 'Safexpress'), // both typed → both kept, reported
+      row('OD3', '3'), ['OD3', '', '', '', '', '', '', '', '', '', '', '', '=formula'], // copy without Order Item Id
+      row('OD4', '4', 'TRK4', 'Delhivery'), row('OD4', '4', 'trk4', 'Delhivery'),   // exact duplicates → one removed
+    ],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => [r[0], r[6]]),
+    [['OD1', 'TRK1'], ['OD2', 'TRKa'], ['OD2', 'TRKb'], ['OD3', ''], ['OD4', 'TRK4']]);
+  const log = t.log();
+  assert.strictEqual(log.filter((m) => m.includes('Removed: duplicate')).length, 3, log.join('\n'));
+  assert.strictEqual(log.filter((m) => m.includes('Removed: exact duplicate')).length, 1, log.join('\n'));
+  assert.ok(log.some((m) => m.includes('OD2') && m.includes('both rows have a Tracking ID')), log.join('\n'));
+  // Nothing more happens on the next sync.
+  t.run('CT_syncNow()');
+  assert.strictEqual(t.tab('Order Tracking').length, 6);
+});
+
+scenario('a product listed twice in Pre CRM gets two rows in Order Tracking (and keeps them)', () => {
+  const same = { sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' };
+  const t = load({
+    'Pre CRM': [PRE_HEADER, pre(same), pre(same)],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id'])], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => [r[0], r[15]]), [['OD1', '1'], ['OD1', '1 #2']]);
+  assert.ok(!t.log().some((m) => m.includes('Removed')), t.log().join('\n'));
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);

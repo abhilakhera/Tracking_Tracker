@@ -107,4 +107,18 @@ const Utilities = {
   parseDate: (s) => new Date(Date.parse(s + 'T00:00:00+05:30')),
 };
 
-module.exports = { makeSheet, makeSpreadsheet, makeScriptApp, Utilities };
+/**
+ * Google's script lock is shared with every other script in the spreadsheet, so the tracker
+ * may only hold it for an instant. This fake counts how often it was taken and lets a test
+ * check that it is never left held.
+ */
+function makeLockService() {
+  const state = { held: false, taken: 0 };
+  const lock = {
+    tryLock: () => { if (state.held) return false; state.held = true; state.taken++; return true; },
+    releaseLock: () => { state.held = false; },
+  };
+  return { state, service: { getScriptLock: () => lock } };
+}
+
+module.exports = { makeSheet, makeSpreadsheet, makeScriptApp, makeLockService, Utilities };

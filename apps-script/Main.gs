@@ -8,7 +8,8 @@
  *  - it has no function called onOpen (a spreadsheet can only have one); the menu
  *    is added by its own "on open" trigger, created by CT_setup;
  *  - it only creates, changes or deletes its own triggers (CT_...);
- *  - it doesn't use Google's shared script lock, so other scripts never wait for it;
+ *  - it holds Google's shared script lock only for an instant (to check its own "running"
+ *    flag), so other scripts never wait for it;
  *  - it only writes to the SHEET_NAME tab and its own log tab.
  */
 
@@ -204,14 +205,12 @@ var CT_RUN_FLAG_MAX_AGE_MS_ = 10 * 60 * 1000;
  */
 function CT_runUpdate_(options) {
   var props = PropertiesService.getScriptProperties();
-  // Our own "already running" flag instead of Google's script lock, which is shared
-  // with every other script in this spreadsheet.
-  var runningSince = Number(props.getProperty('CT_RUNNING_SINCE')) || 0;
-  if (runningSince && Date.now() - runningSince < CT_RUN_FLAG_MAX_AGE_MS_) {
+  // Our own "already running" flag. Google's script lock (shared with every other script in
+  // this spreadsheet) is held only for the instant it takes to check and set the flag.
+  if (!CT_claimFlag_('CT_RUNNING_SINCE', CT_RUN_FLAG_MAX_AGE_MS_)) {
     CT_notify_(options, 'An update is already running. Try again in a few minutes.');
     return;
   }
-  props.setProperty('CT_RUNNING_SINCE', String(Date.now()));
   try {
     CT_deleteTriggers_('CT_continueUpdate');
     var startedAt = Date.now();

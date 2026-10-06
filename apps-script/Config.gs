@@ -135,9 +135,10 @@ var CT_SYNC = {
   // Order Tracking (tab name is CT_CONFIG.SHEET_NAME). The robot fills these columns.
   // G Tracking ID, H Courier and M Remarks are yours and are never changed.
   // ORDER_ITEM_ID: the robot remembers which product each row is for here.
+  // REMARKS: only read, to never remove a row where you typed a remark.
   ORDER_TRACKING: {
     ORDER_ID: 'A', ORDER_DATE: 'B', SKU: 'C', FSN: 'D', NAME: 'E', PHONE: 'F',
-    DELIVERY_BY: 'L', RETURN_TYPE: 'N', REFUND_STATUS: 'O', ORDER_ITEM_ID: 'P',
+    DELIVERY_BY: 'L', RETURN_TYPE: 'N', REFUND_STATUS: 'O', ORDER_ITEM_ID: 'P', REMARKS: 'M',
   },
 
   // Self Ship Cases (filled in by you).

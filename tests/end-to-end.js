@@ -13,7 +13,7 @@ const assert = require('assert');
 const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Fsn.gs', 'Main.gs'];
 const G = 6, I = 8, J = 9, K = 10; // 0-based column indexes in a row array
 
-const { makeSpreadsheet, makeScriptApp, Utilities } = require('./fake-sheet');
+const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
 
 const row = (id, courier, brief = '', status = '', date = '') => ['', '', '', '', '', '', id, courier, brief, status, date];
 const json = (code, body) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(body) });
@@ -57,6 +57,7 @@ function setup(rows, props, trackCourierReply, extra = {}) {
     assert.ok(m, url);
     return trackCourierReply(m[1], decodeURIComponent(m[2]));
   }
+  const locks = makeLockService();
   const ctx = vm.createContext({
     console: { log() {}, error: console.error },
     SpreadsheetApp: {
@@ -67,7 +68,7 @@ function setup(rows, props, trackCourierReply, extra = {}) {
     UrlFetchApp: { fetch },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
     // Other scripts may hold Google's shared script lock; the tracker must not need it.
-    LockService: { getScriptLock: () => { throw new Error('the tracker must not use the shared script lock'); } },
+    LockService: locks.service,
     ScriptApp: makeScriptApp(triggers),
     Utilities: { ...Utilities, sleep: (ms) => { slept += ms; } }, // don't really wait in tests
   });
@@ -77,7 +78,7 @@ function setup(rows, props, trackCourierReply, extra = {}) {
   return {
     ctx, ss,
     run: (fn) => vm.runInContext(fn + '()', ctx),
-    data: main.data, formats: main.formats, dashboard, calls, triggers, props, writes,
+    data: main.data, formats: main.formats, dashboard, calls, triggers, props, writes, locks,
     log: () => ss.getSheetByName('Courier Tracking Log').data.slice(1).map((r) => `${r[1]} ${r[4]} ${r[5]}`),
     slept: () => slept,
   };
@@ -137,6 +138,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   assert.ok(t.slept() >= 500, 'requests should be paced, slept ' + t.slept() + ' ms');
   assert.strictEqual(t.triggers.length, 0, 'no pause expected');
   assert.strictEqual(t.props.CT_RUNNING_SINCE, undefined, 'the "running" flag is cleared at the end');
+  assert.ok(t.locks.state.taken > 0 && !t.locks.state.held, "Google's shared lock is only taken for an instant and always released");
   console.log('Scenario 1 (normal run, only the Order Tracking tab is touched): OK');
 }
 
