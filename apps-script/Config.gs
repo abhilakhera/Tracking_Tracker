@@ -92,6 +92,10 @@ var CT_CONFIG = {
     },
   },
 
+  // Couriers you track by hand. Their rows are skipped: Brief Status, Tracking Status and
+  // Status Date are left for you to fill in. Capitals and spaces don't matter.
+  MANUAL_COURIERS: ['BNG'],
+
   // API addresses. You don't need to change these.
   DELHIVERY_BASE_URL: 'https://track.delhivery.com',
   TRACKCOURIER_BASE_URL: 'https://api.trackcourier.io/v1',

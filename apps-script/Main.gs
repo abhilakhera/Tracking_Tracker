@@ -319,6 +319,7 @@ function CT_processBlock_(sheet, startRow, count, options, log, stats) {
         (CT_isFinishedStatus_(status) || CT_isFinishedStatus_(brief))) { stats.skipped++; return; }
 
     var courierText = cell(row, cCourier);
+    if (CT_isManualCourier_(courierText)) { stats.skipped++; return; } // tracked by hand (e.g. BNG)
     var key = CT_courierKeyFor_(courierText);
     if (!key) {
       stats.errors++;

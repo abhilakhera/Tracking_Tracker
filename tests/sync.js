@@ -326,4 +326,46 @@ scenario('FSN links in every tab: pasted values right away, script-written value
   assert.deepStrictEqual(msgs, ['All FSNs are already clickable links.']);
 });
 
+// ── 11. "Do Not Dispatch" ──
+scenario('"Do Not Dispatch" (any spelling) never comes in, and is removed unless you typed tracking details', () => {
+  const t = load({ 'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER] });
+  const yes = ['Dispatch', 'DISPATCHED', 'Dispatch, Color Change', 'Call Not Pick, Dispatch', 'Dispatch, Do not call'];
+  const no = ['Do Not Dispatch', 'do not dispatch', 'Do Not  Dispatch', "Don't Dispatch", 'Dont dispatch', 'DoNot Dispatch',
+    'Do-Not-Dispatch', 'Not to Dispatch', 'No Dispatch', 'Not dispatched yet', 'Hold - Do not Dispatch', 'Call Not Pick', ''];
+  yes.forEach((r) => assert.strictEqual(t.run(`CT_hasDispatchRemark_(${JSON.stringify(r)})`), true, r));
+  no.forEach((r) => assert.strictEqual(t.run(`CT_hasDispatchRemark_(${JSON.stringify(r)})`), false, r));
+});
+
+scenario('orders already in Order Tracking that become "Do Not Dispatch" are removed (rows with your data are kept)', () => {
+  const p = (o, item, remark) => pre({ sku: 'S' + item, fsn: 'F' + item, order: o, item, on: ist(2026, 9, 21), name: 'N', phone: 1, remark, by: '' });
+  const r = (o, item, g = '', h = '') => [o, ist(2026, 9, 21), 'S' + item, link('F' + item), 'N', 1, g, h, '', '', '', '', '=formula', '', '', item];
+  const t = load({
+    'Pre CRM': [PRE_HEADER, p('OD1', '1', 'Dispatch'), p('OD2', '2', 'Do Not Dispatch'), p('OD3', '3', "Don't dispatch"), p('OD4', '4', 'Dispatch')],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']), r('OD1', '1'), r('OD2', '2'), r('OD3', '3', 'TRK3', 'Delhivery'), r('OD4', '4')],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD3', 'OD4']);
+  const log = t.log();
+  assert.ok(log.some((m) => m.includes('OD2') && m.includes('Removed: Pre CRM says not to dispatch')), log.join('\n'));
+  assert.ok(log.some((m) => m.includes('OD3') && m.includes('has a Tracking ID or Courier filled in, so it is kept')), log.join('\n'));
+  // A second sync changes nothing more.
+  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD3', 'OD4']);
+});
+
+scenario('no rows are removed while the tracking update is running (done on the next sync)', () => {
+  const t = load({
+    'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Do Not Dispatch', by: '' })],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']), ['OD1', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '1']],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.props.CT_RESUME_ROW = '5';
+  t.run('CT_syncNow()');
+  assert.strictEqual(t.tab('Order Tracking')[1][0], 'OD1');
+  delete t.props.CT_RESUME_ROW;
+  t.run('CT_syncNow()');
+  assert.strictEqual(t.tab('Order Tracking').length, 1);
+});
+
 console.log(`\nAll ${passed} sync scenarios passed`);

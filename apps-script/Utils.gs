@@ -24,6 +24,14 @@ function CT_courierKeyFor_(courierCell) {
   return null;
 }
 
+/** True for couriers you track by hand (CT_CONFIG.MANUAL_COURIERS): their rows are skipped. */
+function CT_isManualCourier_(courierCell) {
+  var name = CT_normalizeText_(courierCell);
+  return !!name && (CT_CONFIG.MANUAL_COURIERS || []).some(function (m) {
+    return name === CT_normalizeText_(m);
+  });
+}
+
 /** Tracking IDs are compared as trimmed text (sheets sometimes store them as numbers). */
 function CT_cleanTrackingId_(value) {
   if (typeof value === 'number') return String(Math.round(value));

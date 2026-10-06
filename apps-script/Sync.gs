@@ -226,6 +226,7 @@ function CT_readPreCrm_(ss, tz, log) {
     item.key = CT_itemKey_(item.orderId, item.itemId, item.sku);
     var day = item.orderedOn ? CT_dayNumber_(item.orderedOn, tz) : null;
     item.qualifies = CT_hasDispatchRemark_(item.remarks) && day !== null && day >= fromDay;
+    item.doNotDispatch = CT_isDoNotDispatch_(item.remarks);
 
     if (out.byKey[item.key]) {
       if (item.qualifies) log.add(C.SHEET + ' row ' + item.row, orderId, 'ERROR',
@@ -279,9 +280,11 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
   var O = CT_SYNC.ORDER_TRACKING;
   var sheet = CT_requireSheet_(ss, CT_CONFIG.SHEET_NAME);
   var trackingIdCol = CT_CONFIG.COLUMNS.TRACKING_ID;
-  var t = CT_readTable_(sheet, CT_CONFIG.HEADER_ROWS, [O.ORDER_ID, O.ORDER_DATE, O.SKU, O.FSN, O.NAME, O.PHONE,
-    O.DELIVERY_BY, O.RETURN_TYPE, O.REFUND_STATUS, O.ORDER_ITEM_ID, trackingIdCol]);
+  var columns = [O.ORDER_ID, O.ORDER_DATE, O.SKU, O.FSN, O.NAME, O.PHONE,
+    O.DELIVERY_BY, O.RETURN_TYPE, O.REFUND_STATUS, O.ORDER_ITEM_ID, trackingIdCol, CT_CONFIG.COLUMNS.COURIER];
+  var t = CT_readTable_(sheet, CT_CONFIG.HEADER_ROWS, columns);
   CT_ensureHeader_(sheet, O.ORDER_ITEM_ID, 'Order Item Id');
+  if (CT_removeDoNotDispatch_(sheet, t, pre, log)) t = CT_readTable_(sheet, CT_CONFIG.HEADER_ROWS, columns);
 
   // Index the rows already there.
   var rowOfKey = {};       // item key → row index
@@ -360,6 +363,43 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
     dateCols: [O.ORDER_DATE, O.DELIVERY_BY], textCols: [O.ORDER_ITEM_ID], linkCols: [O.FSN],
   });
   return stats;
+}
+
+/**
+ * Remove Order Tracking rows of products whose Pre CRM remark now says not to dispatch
+ * ("Do Not Dispatch"...). A row where a Tracking ID or Courier has been filled in is kept
+ * (and listed in the log), so typed-in work is never lost. Returns true if rows were removed.
+ */
+function CT_removeDoNotDispatch_(sheet, t, pre, log) {
+  var O = CT_SYNC.ORDER_TRACKING;
+  var props = PropertiesService.getScriptProperties();
+  var trackingBusy = (Number(props.getProperty('CT_RUNNING_SINCE')) || 0) > Date.now() - 10 * 60 * 1000 ||
+    props.getProperty('CT_RESUME_ROW');
+  var remove = [];
+  for (var i = 0; i < t.count; i++) {
+    var orderId = t.text(i, O.ORDER_ID);
+    if (!orderId) continue;
+    var key = t.text(i, O.ORDER_ITEM_ID);
+    var items = key && pre.byKey[key] ? [pre.byKey[key]] : (pre.byOrder[orderId] || []);
+    if (!items.length || !items.every(function (it) { return it.doNotDispatch; })) continue;
+    var where = CT_CONFIG.SHEET_NAME + ' row ' + (t.firstRow + i);
+    if (t.text(i, CT_CONFIG.COLUMNS.TRACKING_ID) || t.text(i, CT_CONFIG.COLUMNS.COURIER)) {
+      log.add(where, orderId, 'INFO', 'Pre CRM now says "' + items[0].remarks + '", but this row has a Tracking ID or Courier filled in, so it is kept. Delete it yourself if it is not needed.');
+    } else if (trackingBusy) {
+      log.add(where, orderId, 'INFO', 'Pre CRM says "' + items[0].remarks + '". The row will be removed on the next sync (the tracking update is running right now).');
+    } else {
+      remove.push(i);
+    }
+  }
+  remove.reverse().forEach(function (i) {
+    var row = t.firstRow + i;
+    // Delete only if the row still holds the same order (rows may have moved meanwhile).
+    var now = sheet.getRange(row, CT_columnNumber_(O.ORDER_ID)).getDisplayValue();
+    if (CT_cellText_(now) !== t.text(i, O.ORDER_ID)) return;
+    sheet.deleteRow(row);
+    log.add(CT_CONFIG.SHEET_NAME + ' row ' + row, t.text(i, O.ORDER_ID), 'INFO', 'Removed: Pre CRM says not to dispatch this order.');
+  });
+  return remove.length > 0;
 }
 
 /** Order Tracking → Review & Rating Data. */
@@ -547,11 +587,23 @@ function CT_itemKey_(orderId, itemId, sku) {
   return orderId + (sku ? ' / ' + String(sku).trim() : '');
 }
 
-/** Remarks contain "dispatch" (Dispatch, DISPATCH, Dispatched...) but not "not dispatch...". */
+/** Remarks contain "dispatch" (Dispatch, DISPATCH, Dispatched...) and don't say not to dispatch. */
 function CT_hasDispatchRemark_(remarks) {
-  var s = String(remarks || '').toLowerCase();
+  var letters = String(remarks || '').toLowerCase().replace(/[^a-z]/g, '');
+  return letters.indexOf(CT_SYNC.REMARK_WORD.toLowerCase()) >= 0 && !CT_isDoNotDispatch_(remarks);
+}
+
+/**
+ * Remarks that say NOT to dispatch: "Do Not Dispatch", "Don't Dispatch", "Dont dispatch",
+ * "DoNot Dispatch", "Do-Not-Dispatch", "Not to Dispatch", "No Dispatch", "Not dispatched yet"...
+ * (capitals, spaces and punctuation are ignored).
+ */
+function CT_isDoNotDispatch_(remarks) {
+  var letters = String(remarks || '').toLowerCase().replace(/[^a-z]/g, '');
   var word = CT_SYNC.REMARK_WORD.toLowerCase();
-  return s.indexOf(word) >= 0 && !new RegExp('\\bnot\\s+' + word).test(s);
+  return ['not', 'dont', 'nottobe', 'notto', 'no'].some(function (neg) {
+    return letters.indexOf(neg + word) >= 0;
+  });
 }
 
 /** Cell value → Date (or null). Handles real dates and text like "9-Aug-2026". */

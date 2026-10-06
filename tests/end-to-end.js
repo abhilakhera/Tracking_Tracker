@@ -94,6 +94,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
     row('2222222222222', 'delhivery', 'Delivered', 'Delivered - Waybill Delivered (Asansol)', 'old'),
     row('', 'Delhivery'),
     row('X1', 'Blue Dart'),
+    row('BNG123', ' bng '),               // tracked by hand → skipped, no error, nothing written
     row('SX9002', 'Safe Express'),
   ], { CT_DELHIVERY_TOKEN: 'DTOKEN', CT_TRACKCOURIER_API_KEY: 'TCKEY' }, (slug, id) => {
     assert.strictEqual(slug, 'safexpress');
@@ -111,8 +112,12 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   assert.deepStrictEqual([d[4][I], d[4][J]], ['', '']);
   // already delivered row untouched
   assert.deepStrictEqual([d[5][I], d[5][J], d[5][K]], ['Delivered', 'Delivered - Waybill Delivered (Asansol)', 'old']);
+  // BNG is tracked by hand: skipped, nothing written, no error
+  assert.deepStrictEqual([d[8][I], d[8][J], d[8][K]], ['', '', '']);
+  assert.ok(!t.calls.some((c) => c.includes('BNG123')), 'BNG is never sent to an API');
+  assert.ok(!t.log().some((m) => m.startsWith('9 ')), 'no log message for the BNG row');
   // unknown Safexpress number → left blank
-  assert.strictEqual(d[8][J], '');
+  assert.strictEqual(d[9][J], '');
   // Status Date column K holds dates
   assert.strictEqual(t.formats['2,11'], 'dd-mmm-yyyy');
   // Tracking writes only columns I-K of updated rows (plus the log tabs; the order sync that runs
@@ -124,7 +129,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   const msgs = t.log();
   assert.ok(msgs.some((m) => m.startsWith('8 ERROR Courier name not recognised')), msgs.join('\n'));
   assert.ok(msgs.some((m) => m.startsWith('5 ERROR DP World has no shipment with this docket')), msgs.join('\n'));
-  assert.ok(msgs.some((m) => m.startsWith('9 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
+  assert.ok(msgs.some((m) => m.startsWith('10 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
   assert.ok(msgs.some((m) => m.includes('TrackCourier.io: 1,234 of 5,000 requests used this month.')), msgs.join('\n'));
   assert.strictEqual(t.calls.filter((c) => c.includes('cargoes.com')).length, 1, 'both DP World dockets in one request');
   assert.ok(!t.calls.some((c) => c.includes('2222222222222')), 'delivered row should not be re-checked');
