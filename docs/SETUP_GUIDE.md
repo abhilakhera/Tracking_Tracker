@@ -28,12 +28,14 @@ changes the **Order Tracking** tab, and it only ever touches its own automatic t
 - Orders come in from **Pre CRM** when they were **ordered on or after 20-Sep-2026** and
   their **Remarks** contain **"Dispatch"**, but not "Do Not Dispatch" (or "Don't Dispatch",
   "Not to Dispatch", ...). New products are added at the bottom.
-- If an order's remark later changes to "Do Not Dispatch", its row is removed, unless a
-  Tracking ID or Courier was already filled in (then it is kept and listed in the Order Sync Log).
+
 - Couriers you track by hand (**BNG**, set in `MANUAL_COURIERS` in `CT_Config`) are skipped by the
   tracking robot: fill in Brief Status, Tracking Status and Status Date yourself.
-- Rows are **never deleted**. If an order stops being "Dispatch", its row stays, and the
-  **Order Sync Log** tab lists it so you can delete it yourself.
+- Order Tracking **mirrors Pre CRM**: an order is there only while Pre CRM lists it as a
+  "Dispatch" order (as many times as Pre CRM lists it). Rows of orders that no longer qualify
+  (remark changed, deleted from Pre CRM) and extra duplicate copies are removed automatically.
+  Every removed row is first copied, complete, to the **Removed Orders** tab, so nothing you
+  typed is lost.
 - Columns G, H and M are **never** changed by the robot.
 
 **Review & Rating Data**: a product is added **2 days after its Status Date** once its Brief Status

@@ -352,7 +352,7 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
     };
   });
 
-  // Rows that are not (or no longer) Dispatch orders from Pre CRM: kept, only N and O refreshed.
+  // Rows not (yet) removed by the clean-up (e.g. while tracking runs): only N and O refreshed.
   for (var r = 0; r < t.count; r++) {
     if (seen[r]) continue;
     var oid = t.text(r, O.ORDER_ID);
@@ -361,10 +361,6 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
     desired[r] = { isNew: false, values: CT_pairs_([
       [O.RETURN_TYPE, self2 ? self2.requestType : ''], [O.REFUND_STATUS, self2 ? self2.refundStatus : ''],
     ]) };
-    if (t.text(r, O.ORDER_ITEM_ID) && !(pre.byKey[t.text(r, O.ORDER_ITEM_ID)] || {}).qualifies) {
-      log.add(CT_CONFIG.SHEET_NAME + ' row ' + (t.firstRow + r), oid, 'INFO',
-        'No longer a "Dispatch" order in Pre CRM (or not found there). The row is kept; delete it yourself if it is not needed.');
-    }
   }
 
   // Keep only the cells that actually change.
@@ -385,12 +381,13 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
 }
 
 /**
- * Tidy Order Tracking before syncing. Removes:
- *  - rows of products whose Pre CRM remark now says not to dispatch ("Do Not Dispatch"...);
- *  - duplicate rows of the same product (unless Pre CRM itself lists it that many times).
- * A row where you typed a Tracking ID, Courier or Remark is never removed: for duplicates that
- * row is the one kept, and if two copies both hold typed data, both stay and the log says so.
- * Returns true if rows were removed.
+ * Make Order Tracking mirror Pre CRM before syncing. Removes every row with an Order Id that
+ * Pre CRM doesn't (or no longer) list as a "Dispatch" order from the start date — remark changed
+ * (e.g. to "Do Not Dispatch"), order deleted from Pre CRM, too old — and extra copies of a
+ * product beyond the number of times Pre CRM lists it. Of several copies, the row with a
+ * Tracking ID / Courier / Remark typed in is the one kept.
+ * Every removed row is first copied, complete, to the "Removed Orders" tab, so nothing typed
+ * in is ever lost. Rows without an Order Id are left alone. Returns true if rows were removed.
  */
 function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   var O = CT_SYNC.ORDER_TRACKING;
@@ -404,21 +401,23 @@ function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   var where = function (i) { return CT_CONFIG.SHEET_NAME + ' row ' + (t.firstRow + i); };
   var remove = {};  // row index → reason
 
-  // 1. "Do Not Dispatch".
+  // 1. Rows whose product (or, without an Order Item Id, whose order) isn't a qualifying Pre CRM order.
   for (var i = 0; i < t.count; i++) {
     var orderId = t.text(i, O.ORDER_ID);
     if (!orderId) continue;
     var key = t.text(i, O.ORDER_ITEM_ID);
-    var items = key && pre.byKey[key] ? [pre.byKey[key]] : (pre.byOrder[orderId] || []);
-    if (!items.length || !items.every(function (it) { return it.doNotDispatch; })) continue;
-    if (hasTypedData(i)) {
-      log.add(where(i), orderId, 'INFO', 'Pre CRM now says "' + items[0].remarks + '", but this row has a Tracking ID, Courier or Remark typed in, so it is kept. Delete it yourself if it is not needed.');
-    } else {
-      remove[i] = 'Removed: Pre CRM says not to dispatch this order.';
-    }
+    var item = key ? pre.byKey[key] : null;
+    var keep = key ? !!(item && item.qualifies)
+      : (pre.byOrder[orderId] || []).some(function (it) { return it.qualifies; });
+    if (keep) continue;
+    var any = item || (pre.byOrder[orderId] || [])[0];
+    remove[i] = !any ? 'Removed: this order is no longer in Pre CRM.'
+      : any.doNotDispatch ? 'Removed: Pre CRM says "' + any.remarks + '".'
+      : CT_hasDispatchRemark_(any.remarks) ? 'Removed: ordered before ' + CT_SYNC.INCLUDE_ORDERS_FROM + ' (or "Ordered On" is not a date).'
+      : 'Removed: the Pre CRM remark is now "' + any.remarks + '" (not "Dispatch").';
   }
 
-  // 2. Duplicates: the same product (Order Item Id) on more than one row.
+  // 2. Extra copies of the same product (Pre CRM lists each copy separately as "<id> #2", ...).
   var rowsOfKey = {};
   for (var j = 0; j < t.count; j++) {
     var k = t.text(j, O.ORDER_ITEM_ID);
@@ -427,30 +426,18 @@ function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   Object.keys(rowsOfKey).forEach(function (k) {
     var rows = rowsOfKey[k];
     if (rows.length < 2) return;
-    var keep = rows.filter(hasTypedData)[0];
-    if (keep === undefined) keep = rows[0];
-    var typed = function (r) {
-      return [CT_CONFIG.COLUMNS.TRACKING_ID, CT_CONFIG.COLUMNS.COURIER, O.REMARKS].map(function (c) {
-        return t.formula(r, c) ? '' : t.text(r, c).toLowerCase();
-      }).join('|');
-    };
+    var keepRow = rows.filter(hasTypedData)[0];
+    if (keepRow === undefined) keepRow = rows[0];
     rows.forEach(function (r) {
-      if (r === keep) return;
-      if (hasTypedData(r) && typed(r) === typed(keep)) {
-        remove[r] = 'Removed: exact duplicate of ' + where(keep) + ' (same product and same typed details).';
-      } else if (hasTypedData(r)) {
-        log.add(where(r), t.text(r, O.ORDER_ID), 'ERROR', 'Same product as ' + where(keep) + ', and both rows have a Tracking ID, Courier or Remark typed in, so neither was removed. Please delete the wrong one yourself.');
-      } else {
-        remove[r] = 'Removed: duplicate of ' + where(keep) + ' (same product).';
-      }
+      if (r !== keepRow) remove[r] = 'Removed: duplicate of ' + where(keepRow) + ' (Pre CRM lists this product fewer times).';
     });
   });
 
-  // 3. Duplicates without an Order Item Id: a row for an order whose products all already have their own row.
+  // 3. Rows without an Order Item Id, for an order whose products all have their own row already.
   for (var x = 0; x < t.count; x++) {
     var oid = t.text(x, O.ORDER_ID);
-    if (!oid || t.text(x, O.ORDER_ITEM_ID) || (x in remove) || hasTypedData(x)) continue;
-    var its = pre.byOrder[oid] || [];
+    if (!oid || t.text(x, O.ORDER_ITEM_ID) || (x in remove)) continue;
+    var its = (pre.byOrder[oid] || []).filter(function (it) { return it.qualifies; });
     if (its.length && its.every(function (it) { return rowsOfKey[it.key]; })) {
       remove[x] = 'Removed: duplicate row of an order that already has its own row(s).';
     }
@@ -459,21 +446,44 @@ function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   var indexes = Object.keys(remove).map(Number).sort(function (a, b) { return b - a; }); // bottom-up
   if (!indexes.length) return false;
   if (trackingBusy) {
-    indexes.forEach(function (i) { log.add(where(i), t.text(i, O.ORDER_ID), 'INFO', remove[i].replace('Removed:', 'Will be removed on the next sync (the tracking update is running right now):')); });
+    indexes.forEach(function (i) {
+      log.add(where(i), t.text(i, O.ORDER_ID), 'INFO', remove[i].replace('Removed:', 'Will be removed on the next sync (the tracking update is running right now):'));
+    });
     return false;
   }
-  var removed = 0;
+  var lastCol = Math.max(sheet.getLastColumn(), CT_columnNumber_(O.ORDER_ITEM_ID));
+  var archived = [];
   indexes.forEach(function (i) {
     var row = t.firstRow + i;
+    var range = sheet.getRange(row, 1, 1, lastCol);
+    var now = range.getDisplayValues()[0];
     // Delete only if the row still holds the same order and product (rows may have moved meanwhile).
-    var now = sheet.getRange(row, 1, 1, CT_columnNumber_(O.ORDER_ITEM_ID)).getDisplayValues()[0];
     if (CT_cellText_(now[CT_columnNumber_(O.ORDER_ID) - 1]) !== t.text(i, O.ORDER_ID) ||
         CT_cellText_(now[CT_columnNumber_(O.ORDER_ITEM_ID) - 1]) !== t.text(i, O.ORDER_ITEM_ID)) return;
+    archived.push([new Date(), remove[i]].concat(range.getValues()[0]));
     sheet.deleteRow(row);
-    removed++;
-    log.add(CT_CONFIG.SHEET_NAME + ' row ' + row, t.text(i, O.ORDER_ID), 'INFO', remove[i]);
+    log.add(CT_CONFIG.SHEET_NAME + ' row ' + row, t.text(i, O.ORDER_ID), 'INFO',
+      remove[i] + (hasTypedData(i) ? ' Its Tracking ID / Courier / Remark were saved in the "' + CT_SYNC.REMOVED_SHEET_NAME + '" tab.' : ''));
   });
-  return removed > 0;
+  CT_archiveRemovedRows_(sheet, archived.reverse(), lastCol);
+  return archived.length > 0;
+}
+
+/** Append removed rows to the "Removed Orders" tab (created with Order Tracking's headings). */
+function CT_archiveRemovedRows_(sheet, rows, lastCol) {
+  if (!rows.length) return;
+  var ss = sheet.getParent();
+  var tab = ss.getSheetByName(CT_SYNC.REMOVED_SHEET_NAME);
+  if (!tab) {
+    tab = ss.insertSheet(CT_SYNC.REMOVED_SHEET_NAME);
+    var head = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0];
+    tab.getRange(1, 1, 1, lastCol + 2).setValues([['Removed On', 'Why'].concat(head)]).setFontWeight('bold');
+  }
+  var width = Math.max.apply(null, rows.map(function (r) { return r.length; }));
+  rows = rows.map(function (r) { while (r.length < width) r.push(''); return r; });
+  var start = tab.getLastRow() + 1;
+  tab.getRange(start, 1, rows.length, width).setValues(rows);
+  tab.getRange(start, 1, rows.length, 1).setNumberFormat('dd-mmm-yyyy hh:mm');
 }
 
 /** Order Tracking → Review & Rating Data. */

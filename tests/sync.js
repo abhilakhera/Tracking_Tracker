@@ -104,10 +104,17 @@ scenario('Pre CRM → Order Tracking: which orders, one row per product, manual 
   t.tab('Pre CRM')[3][16] = 'Cancelled';
   const before2 = t.ss.writes.length;
   t.run('CT_syncNow()');
-  assert.deepStrictEqual(t.ss.writes.slice(before2).filter((w) => !w.startsWith('Order Sync Log')), ['Order Tracking!R4C5']);
+  const otWrites = t.ss.writes.slice(before2).filter((w) => w.startsWith('Order Tracking'));
+  assert.deepStrictEqual(otWrites, ['Order Tracking!delete R5', 'Order Tracking!R4C5'], 'only the name changes; the cancelled product row is removed');
   assert.strictEqual(ot[3][4], 'Asha K');
-  assert.deepStrictEqual([ot[4][0], ot[4][6]], ['OD300', 'TRK301'], 'a row that no longer qualifies is kept');
-  assert.ok(t.log().some((m) => m.includes('OD300') && m.includes('No longer a "Dispatch" order')), t.log().join('\n'));
+  assert.deepStrictEqual(ot.slice(1).map((r) => [r[0], r[2]]), [['', ''], ['OD600', 'SKU-F'], ['OD200', 'SKU-A'], ['OD300', 'SKU-C']],
+    'Order Tracking mirrors Pre CRM: the product whose remark became "Cancelled" is gone');
+  // ...but nothing typed is lost: the whole row is in "Removed Orders".
+  const removed = t.tab('Removed Orders');
+  assert.deepStrictEqual(removed[0].slice(0, 4), ['Removed On', 'Why', 'Order Id', 'Order Date']);
+  assert.deepStrictEqual([removed[1][1], removed[1][2], removed[1][8], removed[1][9]],
+    ['Removed: the Pre CRM remark is now "Cancelled" (not "Dispatch").', 'OD300', 'TRK301', 'Delhivery']);
+  assert.ok(t.log().some((m) => m.includes('OD300') && m.includes('saved in the "Removed Orders" tab')), t.log().join('\n'));
 });
 
 // ── 2. Order Tracking → Review & Rating Data ──
@@ -337,7 +344,7 @@ scenario('"Do Not Dispatch" (any spelling) never comes in, and is removed unless
   no.forEach((r) => assert.strictEqual(t.run(`CT_hasDispatchRemark_(${JSON.stringify(r)})`), false, r));
 });
 
-scenario('orders already in Order Tracking that become "Do Not Dispatch" are removed (rows with your data are kept)', () => {
+scenario('orders already in Order Tracking that become "Do Not Dispatch" are removed (typed data saved in Removed Orders)', () => {
   const p = (o, item, remark) => pre({ sku: 'S' + item, fsn: 'F' + item, order: o, item, on: ist(2026, 9, 21), name: 'N', phone: 1, remark, by: '' });
   const r = (o, item, g = '', h = '') => [o, ist(2026, 9, 21), 'S' + item, link('F' + item), 'N', 1, g, h, '', '', '', '', '=formula', '', '', item];
   const t = load({
@@ -346,13 +353,14 @@ scenario('orders already in Order Tracking that become "Do Not Dispatch" are rem
     'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   t.run('CT_syncNow()');
-  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD3', 'OD4']);
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD4']);
   const log = t.log();
-  assert.ok(log.some((m) => m.includes('OD2') && m.includes('Removed: Pre CRM says not to dispatch')), log.join('\n'));
-  assert.ok(log.some((m) => m.includes('OD3') && m.includes('has a Tracking ID, Courier or Remark typed in, so it is kept')), log.join('\n'));
+  assert.ok(log.some((m) => m.includes('OD2') && m.includes('Removed: Pre CRM says "Do Not Dispatch"')), log.join('\n'));
+  assert.ok(log.some((m) => m.includes('OD3') && m.includes('saved in the "Removed Orders" tab')), log.join('\n'));
+  assert.deepStrictEqual(t.tab('Removed Orders').slice(1).map((r) => [r[2], r[8], r[9]]), [['OD2', '', ''], ['OD3', 'TRK3', 'Delhivery']]);
   // A second sync changes nothing more.
   t.run('CT_syncNow()');
-  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD3', 'OD4']);
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD4']);
 });
 
 scenario('no rows are removed while the tracking update is running (done on the next sync)', () => {
@@ -386,7 +394,7 @@ scenario('a second sync starting while one is running does nothing (this is how 
   assert.ok(!t.locks.state.held, 'the lock is released');
 });
 
-scenario('duplicate rows of the same product are removed, keeping the one with your typed data', () => {
+scenario('extra copies of a product are removed (the copy with your typed data is kept; others saved in Removed Orders)', () => {
   const row = (o, item, g = '', h = '', m = '') => [o, ist(2026, 9, 21), 'S' + item, link('F' + item), 'N', 1, g, h, '', '', '', '', m, '', '', item];
   const t = load({
     'Pre CRM': [PRE_HEADER,
@@ -396,7 +404,7 @@ scenario('duplicate rows of the same product are removed, keeping the one with y
       pre({ sku: 'S4', fsn: 'F4', order: 'OD4', item: '4', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' })],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
       row('OD1', '1'), row('OD1', '1', 'TRK1', 'Delhivery'), row('OD1', '1'),      // keep the one with the Tracking ID
-      row('OD2', '2', 'TRKa', 'Delhivery'), row('OD2', '2', 'TRKb', 'Safexpress'), // both typed → both kept, reported
+      row('OD2', '2', 'TRKa', 'Delhivery'), row('OD2', '2', 'TRKb', 'Safexpress'), // both typed → first kept, other saved in Removed Orders
       row('OD3', '3'), ['OD3', '', '', '', '', '', '', '', '', '', '', '', '=formula'], // copy without Order Item Id
       row('OD4', '4', 'TRK4', 'Delhivery'), row('OD4', '4', 'trk4', 'Delhivery'),   // exact duplicates → one removed
     ],
@@ -404,14 +412,14 @@ scenario('duplicate rows of the same product are removed, keeping the one with y
   });
   t.run('CT_syncNow()');
   assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => [r[0], r[6]]),
-    [['OD1', 'TRK1'], ['OD2', 'TRKa'], ['OD2', 'TRKb'], ['OD3', ''], ['OD4', 'TRK4']]);
+    [['OD1', 'TRK1'], ['OD2', 'TRKa'], ['OD3', ''], ['OD4', 'TRK4']], 'one row per product, as in Pre CRM');
   const log = t.log();
-  assert.strictEqual(log.filter((m) => m.includes('Removed: duplicate')).length, 3, log.join('\n'));
-  assert.strictEqual(log.filter((m) => m.includes('Removed: exact duplicate')).length, 1, log.join('\n'));
-  assert.ok(log.some((m) => m.includes('OD2') && m.includes('both rows have a Tracking ID')), log.join('\n'));
+  assert.strictEqual(log.filter((m) => m.includes('Removed: duplicate')).length, 5, log.join('\n'));
+  // The removed OD2 copy had a different Tracking ID: it is kept in "Removed Orders".
+  assert.ok(t.tab('Removed Orders').slice(1).some((r) => r[2] === 'OD2' && r[8] === 'TRKb'));
   // Nothing more happens on the next sync.
   t.run('CT_syncNow()');
-  assert.strictEqual(t.tab('Order Tracking').length, 6);
+  assert.strictEqual(t.tab('Order Tracking').length, 5);
 });
 
 scenario('a product listed twice in Pre CRM gets two rows in Order Tracking (and keeps them)', () => {
@@ -424,6 +432,21 @@ scenario('a product listed twice in Pre CRM gets two rows in Order Tracking (and
   t.run('CT_syncNow()');
   assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => [r[0], r[15]]), [['OD1', '1'], ['OD1', '1 #2']]);
   assert.ok(!t.log().some((m) => m.includes('Removed')), t.log().join('\n'));
+});
+
+scenario('Order Tracking mirrors Pre CRM: orders deleted from Pre CRM go; rows without an Order Id stay', () => {
+  const t = load({
+    'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' })],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
+      ['OD1', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '1'],
+      ['OD9', '', '', '', '', '', 'TRK9', 'Delhivery', '', '', '', '', '', '', '', '9'],  // deleted from Pre CRM
+      ['', '', '', '', '', '', 'TEST1', 'Safexpress']],                                      // no Order Id: left alone
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => [r[0], r[6]]), [['OD1', ''], ['', 'TEST1']]);
+  assert.deepStrictEqual(t.tab('Removed Orders').slice(1).map((r) => [r[1], r[2], r[8]]),
+    [['Removed: this order is no longer in Pre CRM.', 'OD9', 'TRK9']]);
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);

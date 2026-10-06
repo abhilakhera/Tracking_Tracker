@@ -167,4 +167,6 @@ var CT_SYNC = {
 
   DATE_FORMAT: 'dd-mmm-yyyy',
   LOG_SHEET_NAME: 'Order Sync Log',
+  // Rows removed from Order Tracking are copied here first (never cleared by the robot).
+  REMOVED_SHEET_NAME: 'Removed Orders',
 };

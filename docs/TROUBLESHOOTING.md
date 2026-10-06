@@ -30,10 +30,8 @@ updated, with the reason.
 | Orders were added far down (e.g. from row 1001) | Older version: rows with only a formula (like the Remarks "Days Remaining" formula) were treated as used | Update `CT_Sync`, then **📦 Courier Tracking → Move orders up to the top of Order Tracking** (one time). Formulas stay where they are. |
 | A "Dispatch" order isn't in Order Tracking | It was ordered before 20-Sep-2026, or its "Ordered On" isn't a date | Check the order's row in Pre CRM. The log lists rows whose date can't be read. |
 | "This row has a Tracking ID but no Order Id" | A row you added by hand (e.g. a test row) | Type its Order Id in column A (the robot then fills the rest), or delete the row. |
-| "No longer a Dispatch order in Pre CRM" | Its remark changed, or it was removed from Pre CRM | The row is kept on purpose. Delete it yourself if it isn't needed. |
+| "Removed: …" | The order no longer qualifies in Pre CRM, or was an extra copy | Nothing to do. The complete row (with any Tracking ID / Courier / Remark) is in the **Removed Orders** tab. |
 | "This product is also on Pre CRM row …" | Pre CRM has the same product twice | Order Tracking then gets a row for each. If that's a mistake, delete the extra row in Pre CRM; the extra Order Tracking row is removed on the next sync (unless you typed a Tracking ID in it). |
-| "Removed: duplicate of …" | Two rows for the same product were found in Order Tracking | Nothing; the extra row was removed. The row with your Tracking ID / Courier / Remark is always the one kept. |
-| "Same product as row …, and both rows have a Tracking ID…" | Two rows for one product, each with different typed details | Decide which one is right and delete the other yourself. |
 | FSNs in Order Tracking / Review & Rating Data aren't clickable | A sheet's `onEdit` script only reacts to edits made by a person, never to values written by a script | The sync writes FSNs as Flipkart links itself (`FSN_AS_LINK: true` in `CT_Config`). Update `CT_Sync` and `CT_Config`, then **Sync orders now**. |
 | A delivered order isn't in Review & Rating Data yet | It appears 2 days after its Status Date | Wait; or check it isn't in Self Ship Cases. |
 | Changes in Pre CRM don't show up | The sync runs about a minute after an edit, and every hour | Wait a minute, or **📦 Courier Tracking → Sync orders now**. |
