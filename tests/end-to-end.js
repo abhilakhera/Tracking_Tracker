@@ -29,7 +29,7 @@ function setup(rows, props, trackCourierReply, extra = {}) {
     'Order Tracking': [header, ...rows],
     'Pre CRM': [['SKU Code']],
     'Self Ship Cases': [['SKU']],
-    'Review Calling': [['Order ID']],
+    'Review & Rating Data': [['Order ID']],
   });
   const writes = ss.writes;
   const dashboard = ss.getSheetByName('Dashboard');
@@ -124,7 +124,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   // Tracking writes only columns I-K of updated rows (plus the log tabs; the order sync that runs
   // first only adds the "Order Item Id" headings).
   assert.ok(t.writes.every((w) => /^Order Tracking!R\d+C(9|10|11)$/.test(w) || /Log!/.test(w) ||
-    ['Order Tracking!R1C16', 'Review Calling!R1C13'].includes(w)), t.writes.join(' '));
+    ['Order Tracking!R1C16', 'Review & Rating Data!R1C13'].includes(w)), t.writes.join(' '));
   assert.deepStrictEqual(t.dashboard.data, [['Order', 'Tracking'], ['x', '1111111111111']]);
   assert.ok(!t.writes.some((w) => w.startsWith('Order Tracking!R6C')), 'the delivered row must not be rewritten');
   const msgs = t.log();

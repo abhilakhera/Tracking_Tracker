@@ -1,5 +1,5 @@
 /**
- * Tests for the order sync (Pre CRM → Order Tracking → Review Calling).
+ * Tests for the order sync (Pre CRM → Order Tracking → Review & Rating Data).
  * Run with:  node tests/sync.js
  */
 const fs = require('fs');
@@ -72,7 +72,7 @@ scenario('Pre CRM → Order Tracking: which orders, one row per product, manual 
       ['OD600', '', '', '', '', '', 'TRK600', 'Delhivery', '', '', '', '', 'my remark'],                     // typed in by hand
     ],
     'Self Ship Cases': [SS_HEADER, ss_('OD300', '302', 'Replacement', 'Not required'), ss_('OD200', '', 'Customer Return', 'Completed')],
-    'Review Calling': [RV_HEADER],
+    'Review & Rating Data': [RV_HEADER],
   });
   t.run('CT_syncNow()');
   const ot = t.tab('Order Tracking');
@@ -117,8 +117,8 @@ scenario('Pre CRM → Order Tracking: which orders, one row per product, manual 
   assert.ok(t.log().some((m) => m.includes('OD300') && m.includes('saved in the "Removed Orders" tab')), t.log().join('\n'));
 });
 
-// ── 2. Order Tracking → Review Calling ──
-scenario('Delivered + 2 days → Review Calling; Self Ship orders kept out and removed', () => {
+// ── 2. Order Tracking → Review & Rating Data ──
+scenario('Delivered + 2 days → Review & Rating Data; Self Ship orders kept out and removed', () => {
   const ot = (order, item, brief, when) => [order, '', '', 'F' + item, '', '', 'T' + item, 'Delhivery', brief, brief, when, '', '', '', '', item];
   const t = load({
     'Pre CRM': [PRE_HEADER,
@@ -136,12 +136,12 @@ scenario('Delivered + 2 days → Review Calling; Self Ship orders kept out and r
       ot('OD5', '5', 'Delivered', daysAgo(9)),      // Self Ship case → never added
     ],
     'Self Ship Cases': [SS_HEADER, ss_('OD5', '5', 'Customer Return', 'Pending')],
-    'Review Calling': [RV_HEADER,
+    'Review & Rating Data': [RV_HEADER,
       ['OD9', ist(2026, 9, 1), 'F9', 'Bed', 'Nine', 1, ist(2026, 9, 5), 'called', 'link', 'msg', 'Done', 'team note', '9'],
     ],
   });
   t.run('CT_syncNow()');
-  let rv = t.tab('Review Calling');
+  let rv = t.tab('Review & Rating Data');
   assert.strictEqual(rv[0][12], 'Order Item Id');
   assert.deepStrictEqual(rv.slice(1).map((r) => r[0]), ['OD9', 'OD1', 'OD2']);
   const r1 = rv[2];
@@ -153,23 +153,23 @@ scenario('Delivered + 2 days → Review Calling; Self Ship orders kept out and r
   // Later, OD1 becomes a Self Ship case → removed straight away (via the edit trigger); other rows keep their notes.
   t.tab('Self Ship Cases').push(ss_('OD1', '1', 'Replacement', 'Not required'));
   t.run(`CT_onEdit({ range: { getSheet: () => ({ getName: () => 'Self Ship Cases' }) } })`);
-  rv = t.tab('Review Calling');
+  rv = t.tab('Review & Rating Data');
   assert.deepStrictEqual(rv.slice(1).map((r) => r[0]), ['OD9', 'OD2']);
   assert.deepStrictEqual(rv[1].slice(7, 12), ['called', 'link', 'msg', 'Done', 'team note']);
-  assert.ok(t.log().some((m) => m.includes('OD1') && m.includes('Removed from Review Calling')), t.log().join('\n'));
+  assert.ok(t.log().some((m) => m.includes('OD1') && m.includes('Removed from Review & Rating Data')), t.log().join('\n'));
   // ...and Order Tracking shows the Self Ship request.
   assert.deepStrictEqual(t.tab('Order Tracking')[1].slice(13, 15), ['Replacement', 'Not required']);
 
   // Running again does not add OD1 back, and does not duplicate OD2.
   t.run('CT_hourlySync()');
-  assert.deepStrictEqual(t.tab('Review Calling').slice(1).map((r) => r[0]), ['OD9', 'OD2']);
+  assert.deepStrictEqual(t.tab('Review & Rating Data').slice(1).map((r) => r[0]), ['OD9', 'OD2']);
 });
 
 // ── 3. When the sync runs ──
 scenario('edits: Self Ship → right away, Pre CRM → one sync a minute later, other tabs → nothing', () => {
   const t = load({
     'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'One', phone: 1, remark: 'Dispatch', by: '' })],
-    'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER], 'Raw p&l sheet': [['x']],
+    'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER], 'Raw p&l sheet': [['x']],
   });
   const edit = (tab) => t.run(`CT_onEdit({ range: { getSheet: () => ({ getName: () => ${JSON.stringify(tab)} }) } })`);
   edit('Raw p&l sheet');
@@ -190,7 +190,7 @@ scenario('a row inserted in Order Tracking during the sync is not overwritten', 
   const t = load({
     'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'New name', phone: 1, remark: 'Dispatch', by: '' })],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']), ['OD1', '', 'S1', 'F1', 'Old name', 1, 'T1', 'Delhivery', '', '', '', '', '', '', '', '1']],
-    'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   // Simulate someone inserting a row at the top between reading and writing.
   const sheet = t.ss.getSheetByName('Order Tracking');
@@ -214,7 +214,7 @@ scenario('rows that only hold a formula count as empty: orders start at row 2, f
   const t = load({
     'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'One', phone: 1, remark: 'Dispatch', by: ist(2026, 10, 1) })],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']), blankWithFormula(2), blankWithFormula(3), blankWithFormula(4)],
-    'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   t.run('CT_syncNow()');
   const ot = t.tab('Order Tracking');
@@ -228,7 +228,7 @@ scenario('"Move orders up" fixes orders that were added below formula rows', () 
   const orderRow = (o, item, extra = {}) => Object.assign([o, ist(2026, 9, 21), 'SKU' + item, 'F' + item, 'Name', 9000000000 + Number(item),
     '', '', '', '', '', ist(2026, 10, 1), '', '', '', item], extra);
   const t = load({
-    'Pre CRM': [PRE_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Pre CRM': [PRE_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
       blankWithFormula(2), blankWithFormula(3), blankWithFormula(4), blankWithFormula(5),
       orderRow('OD1', '1', { 3: link('F1') }), orderRow('OD2', '2', { 6: 'TRK2', 7: 'Delhivery', 13: 'Replacement' }), orderRow('OD3', '3')],
@@ -257,7 +257,7 @@ scenario('"Move orders up" fixes orders that were added below formula rows', () 
 
 scenario('"Move orders up" refuses (and changes nothing) when a column has formulas on empty rows and order data', () => {
   const t = load({
-    'Pre CRM': [PRE_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Pre CRM': [PRE_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']), blankWithFormula(2),
       ['OD1', '', '', '', '', '', '', '', '', '', '', '', 'typed remark', '', '', '1']],
   });
@@ -271,7 +271,7 @@ scenario('"Move orders up" refuses (and changes nothing) when a column has formu
 
 // ── 7. If the sync fails, the reason still appears in the log tab ──
 scenario('a failing sync still writes its reason to the Order Sync Log tab', () => {
-  const t = load({ 'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Review Calling': [RV_HEADER] }); // no Self Ship tab
+  const t = load({ 'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Review & Rating Data': [RV_HEADER] }); // no Self Ship tab
   assert.throws(() => t.run('CT_syncNow()'), /Could not find the tab "Self Ship Cases"/);
   assert.ok(t.log().some((m) => m.includes('ERROR') && m.includes('Could not find the tab "Self Ship Cases"')), t.log().join('\n'));
   assert.strictEqual(t.props.CT_SYNC_RUNNING_SINCE, undefined);
@@ -282,7 +282,7 @@ scenario('FSNs are written as clickable Flipkart links; existing plain FSNs are 
   const t = load({
     'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'BDDHAYHWAX2JGNHZ', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'One', phone: 1, remark: 'Dispatch', by: '' })],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']), ['OD1', ist(2026, 9, 21), 'S1', 'BDDHAYHWAX2JGNHZ', 'One', 1, '', '', '', '', '', '', '', '', '', '1']],
-    'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   t.run('CT_syncNow()');
   const cell = t.tab('Order Tracking')[1][3];
@@ -296,7 +296,7 @@ scenario('FSNs are written as clickable Flipkart links; existing plain FSNs are 
 scenario('FSN links in every tab: pasted values right away, script-written values hourly', () => {
   const lookup = '=VLOOKUP(A2,category!A:B,2,FALSE)';
   const t = load({
-    'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
     'Distribution': [['SKU', 'FSN', 'Listing ID'], ['S1', 'BDDGZM2ZSMXVKSVY', 'LST1'], ['S2', '', 'LST2'], ['S3', link('ALREADY'), 'LST3']],
     'Negative Rating Data': [['Order', 'x', 'y', 'z', ' fsn '], ['OD1', 'a', 'b', 'c', '']], // FSN in column E, odd spacing/case
     'Lookups': [['SKU', 'FSN'], ['S9', lookup]],
@@ -336,7 +336,7 @@ scenario('FSN links in every tab: pasted values right away, script-written value
 
 // ── 11. "Do Not Dispatch" ──
 scenario('"Do Not Dispatch" (any spelling) never comes in, and is removed unless you typed tracking details', () => {
-  const t = load({ 'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER] });
+  const t = load({ 'Pre CRM': [PRE_HEADER], 'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER] });
   const yes = ['Dispatch', 'DISPATCHED', 'Dispatch, Color Change', 'Call Not Pick, Dispatch', 'Dispatch, Do not call'];
   const no = ['Do Not Dispatch', 'do not dispatch', 'Do Not  Dispatch', "Don't Dispatch", 'Dont dispatch', 'DoNot Dispatch',
     'Do-Not-Dispatch', 'Not to Dispatch', 'No Dispatch', 'Not dispatched yet', 'Hold - Do not Dispatch', 'Call Not Pick', ''];
@@ -350,7 +350,7 @@ scenario('orders already in Order Tracking that become "Do Not Dispatch" are rem
   const t = load({
     'Pre CRM': [PRE_HEADER, p('OD1', '1', 'Dispatch'), p('OD2', '2', 'Do Not Dispatch'), p('OD3', '3', "Don't dispatch"), p('OD4', '4', 'Dispatch')],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']), r('OD1', '1'), r('OD2', '2'), r('OD3', '3', 'TRK3', 'Delhivery'), r('OD4', '4')],
-    'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   t.run('CT_syncNow()');
   assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD4']);
@@ -367,7 +367,7 @@ scenario('no rows are removed while the tracking update is running (done on the 
   const t = load({
     'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Do Not Dispatch', by: '' })],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']), ['OD1', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '1']],
-    'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   t.props.CT_RESUME_ROW = '5';
   t.run('CT_syncNow()');
@@ -381,7 +381,7 @@ scenario('no rows are removed while the tracking update is running (done on the 
 scenario('a second sync starting while one is running does nothing (this is how duplicates appeared)', () => {
   const t = load({
     'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' })],
-    'Order Tracking': [OT_HEADER.concat(['Order Item Id'])], 'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id'])], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   // While the first sync is reading Pre CRM, a second one starts (e.g. hourly + an edit at the same moment).
   const preSheet = t.ss.getSheetByName('Pre CRM');
@@ -408,7 +408,7 @@ scenario('extra copies of a product are removed (the copy with your typed data i
       row('OD3', '3'), ['OD3', '', '', '', '', '', '', '', '', '', '', '', '=formula'], // copy without Order Item Id
       row('OD4', '4', 'TRK4', 'Delhivery'), row('OD4', '4', 'trk4', 'Delhivery'),   // exact duplicates → one removed
     ],
-    'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   t.run('CT_syncNow()');
   assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => [r[0], r[6]]),
@@ -426,7 +426,7 @@ scenario('a product listed twice in Pre CRM gets two rows in Order Tracking (and
   const same = { sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' };
   const t = load({
     'Pre CRM': [PRE_HEADER, pre(same), pre(same)],
-    'Order Tracking': [OT_HEADER.concat(['Order Item Id'])], 'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id'])], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   t.run('CT_syncNow()');
   t.run('CT_syncNow()');
@@ -441,7 +441,7 @@ scenario('Order Tracking mirrors Pre CRM: orders deleted from Pre CRM go; rows w
       ['OD1', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '1'],
       ['OD9', '', '', '', '', '', 'TRK9', 'Delhivery', '', '', '', '', '', '', '', '9'],  // deleted from Pre CRM
       ['', '', '', '', '', '', 'TEST1', 'Safexpress']],                                      // no Order Id: left alone
-    'Self Ship Cases': [SS_HEADER], 'Review Calling': [RV_HEADER],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
   t.run('CT_syncNow()');
   assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => [r[0], r[6]]), [['OD1', ''], ['', 'TEST1']]);

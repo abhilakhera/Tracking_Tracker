@@ -1,5 +1,5 @@
 /**
- * ORDER SYNC: keeps "Order Tracking" and "Review Calling" filled from
+ * ORDER SYNC: keeps "Order Tracking" and "Review & Rating Data" filled from
  * "Pre CRM" and "Self Ship Cases". No API calls; it only moves data between tabs.
  *
  *  1. Pre CRM → Order Tracking: one row per product (Order Item Id) for orders placed on or
@@ -7,7 +7,7 @@
  *     added at the bottom; existing rows get their details refreshed. Rows are never deleted,
  *     and Tracking ID, Courier and Remarks (G, H, M) are never touched.
  *  2. Self Ship Cases → Order Tracking: Return Request Type (N) and Refund Status (O).
- *  3. Order Tracking → Review Calling: a product whose Brief Status is "Delivered" is
+ *  3. Order Tracking → Review & Rating Data: a product whose Brief Status is "Delivered" is
  *     added CT_SYNC.REVIEW_AFTER_DAYS days after its Status Date, unless the order is in
  *     Self Ship Cases. Orders that are (or later appear) in Self Ship Cases are removed.
  *     Your team's columns (H-L) are never touched.
@@ -51,7 +51,7 @@ function CT_onEdit(e) {
   }
   var name = e.range.getSheet().getName();
   if (name === CT_SYNC.SELF_SHIP.SHEET) {
-    // Self Ship cases must leave Review Calling straight away.
+    // Self Ship cases must leave Review & Rating Data straight away.
     if (!CT_runSync_({})) CT_scheduleSync_();
   } else if (name === CT_SYNC.PRE_CRM.SHEET) {
     CT_scheduleSync_();
@@ -195,7 +195,7 @@ function CT_runSync_(options) {
       var ot = CT_syncOrderTracking_(ss, tz, pre, selfShip, log);
       var rv = CT_syncReviews_(ss, tz, pre, selfShip, log);
       var summary = 'Order Tracking: ' + ot.added + ' product(s) added, ' + ot.updated + ' updated. ' +
-        'Review Calling: ' + rv.added + ' added, ' + rv.updated + ' updated, ' + rv.removed + ' removed (Self Ship).';
+        'Review & Rating Data: ' + rv.added + ' added, ' + rv.updated + ' updated, ' + rv.removed + ' removed (Self Ship).';
       log.add('', '', 'INFO', summary);
       log.flush();
       CT_notify_(options, summary);
@@ -486,7 +486,7 @@ function CT_archiveRemovedRows_(sheet, rows, lastCol) {
   tab.getRange(start, 1, rows.length, 1).setNumberFormat('dd-mmm-yyyy hh:mm');
 }
 
-/** Order Tracking → Review Calling. */
+/** Order Tracking → Review & Rating Data. */
 function CT_syncReviews_(ss, tz, pre, selfShip, log) {
   var O = CT_SYNC.ORDER_TRACKING;
   var R = CT_SYNC.REVIEW;
@@ -519,7 +519,7 @@ function CT_syncReviews_(ss, tz, pre, selfShip, log) {
       R.DELIVERY_DATE, R.ORDER_ITEM_ID]);
   }
 
-  // Rows already in Review Calling, by product.
+  // Rows already in Review & Rating Data, by product.
   var rowOfKey = {};
   var unclaimed = {};
   for (var j = 0; j < rv.count; j++) {
@@ -529,7 +529,7 @@ function CT_syncReviews_(ss, tz, pre, selfShip, log) {
     else if (o) (unclaimed[o] = unclaimed[o] || []).push(j);
   }
 
-  // 2. Delivered products → Review Calling.
+  // 2. Delivered products → Review & Rating Data.
   var changes = {};
   var next = rv.count;
   for (var x = 0; x < tr.count; x++) {

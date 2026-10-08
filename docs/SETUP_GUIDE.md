@@ -38,9 +38,9 @@ changes the **Order Tracking** tab, and it only ever touches its own automatic t
   typed is lost.
 - Columns G, H and M are **never** changed by the robot.
 
-**Review Calling**: a product is added **2 days after its Status Date** once its Brief Status
+**Review & Rating Data**: a product is added **2 days after its Status Date** once its Brief Status
 is **Delivered**, unless the order is in **Self Ship Cases**. If an order later appears in Self
-Ship Cases, it is **removed** from Review Calling straight away. The robot fills A–G
+Ship Cases, it is **removed** from Review & Rating Data straight away. The robot fills A–G
 (and M, Order Item Id); your team's columns **H–L are never touched**.
 
 **When it runs:**
