@@ -3,6 +3,6 @@
   "private": true,
   "description": "Updates courier tracking status in a Google Sheet (Delhivery, Safexpress, DP World).",
   "scripts": {
-    "test": "node tests/run-tests.js && node tests/end-to-end.js && node tests/sync.js"
+    "test": "node tests/run-tests.js && node tests/end-to-end.js && node tests/sync.js && node tests/import.js"
   }
 }

@@ -29,6 +29,8 @@ function makeSheet(name, rows, ss, writes) {
     getMaxRows: () => Math.max(data.length, 1000),
     getLastColumn: () => data.reduce((m, row) => Math.max(m, (row || []).reduce((k, v, i) => (v !== '' && v !== undefined && v !== null ? i + 1 : k), 0)), 0),
     insertRowsAfter() {},
+    hidden: false,
+    hideSheet() { sheet.hidden = true; },
     deleteRow(r) { data.splice(r - 1, 1); writes.push(`${name}!delete R${r}`); },
     getRange(r, c, nr = 1, nc = 1) {
       return {
@@ -86,6 +88,7 @@ function makeScriptApp(triggers) {
       onEdit: () => { spec.onEdit = true; return b; },
       after: (ms) => { spec.after = ms; return b; },
       everyHours: (n) => { spec.everyHours = n; return b; },
+      everyMinutes: (n) => { spec.everyMinutes = n; return b; },
       everyDays: (n) => { spec.everyDays = n; return b; },
       atHour: (h) => { spec.atHour = h; return b; },
       nearMinute: (m) => { spec.nearMinute = m; return b; },

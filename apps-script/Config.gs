@@ -170,3 +170,37 @@ var CT_SYNC = {
   // Rows removed from Order Tracking are copied here first (never cleared by the robot).
   REMOVED_SHEET_NAME: 'Removed Orders',
 };
+
+/**
+ * ============================================================================
+ *  TRACKING IMPORT: SETTINGS (seller team's tracking spreadsheet → "Raw Order Tracking")
+ * ============================================================================
+ *  Every tab of the source spreadsheet is read. Its columns are found by heading, wherever
+ *  they are and even with small spelling mistakes. Only reading access to the source is needed.
+ */
+var CT_IMPORT = {
+  // "GANPATI ARTS FLIPKART TRACKING - 2026" (only view access is needed).
+  SOURCE_SPREADSHEET_ID: '1hI8DpYwC0i3YQsDUIexzj_IWb2-6OyE476B89HKgAp8',
+
+  // Headings to look for in the source (one of these, spelling mistakes allowed).
+  SOURCE_HEADINGS: {
+    ORDER_ID: ['ORDER ID', 'ORDER NO', 'ORDER NUMBER'],
+    TRACKING_ID: ['TRACKING ID', 'TRACKING NO', 'TRACKING NUMBER', 'AWB', 'AWB NO', 'AWB NUMBER', 'DOCKET NO'],
+    COURIER: ['TRANSPORT', 'TRANSPORTER', 'COURIER', 'COURIER NAME'],
+  },
+  // How many rows at the top of each source tab are searched for the headings.
+  HEADING_SEARCH_ROWS: 10,
+  // Source tabs to leave out (exact names), if any.
+  SKIP_SOURCE_TABS: [],
+
+  // Where the data goes in this spreadsheet. The tab is created (hidden) if it doesn't exist.
+  TARGET_SHEET: 'Raw Order Tracking',
+  TARGET_HEADINGS: { ORDER_ID: 'Order ID', TRACKING_ID: 'Tracking ID', COURIER: 'Courier Name' },
+
+  // How the courier names are written in "Courier Name". Misspellings of these three are
+  // corrected; any other courier (e.g. BNG) is copied as it is.
+  COURIER_NAMES: { DELHIVERY: 'Delhivery', SAFEXPRESS: 'Safexpress', DPWORLD: 'DP World' },
+
+  // How often to check the source for changes: 1, 5, 10, 15 or 30 minutes.
+  EVERY_MINUTES: 10,
+};

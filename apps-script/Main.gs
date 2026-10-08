@@ -31,11 +31,13 @@ function CT_setup() {
   ScriptApp.newTrigger('CT_onEdit').forSpreadsheet(ss).onEdit().create();
   CT_deleteTriggers_('CT_hourlySync');
   ScriptApp.newTrigger('CT_hourlySync').timeBased().everyHours(CT_SYNC.SYNC_EVERY_HOURS).create();
+  CT_deleteTriggers_('CT_importTracking');
+  ScriptApp.newTrigger('CT_importTracking').timeBased().everyMinutes(CT_IMPORT.EVERY_MINUTES).create();
   CT_installDailyTrigger_();
   console.log('✅ Courier Tracking is set up. Reload the spreadsheet to see the "📦 Courier Tracking" menu. ' +
     'Daily tracking update: around ' + CT_CONFIG.DAILY_UPDATE_HOUR + ':00 (' + CT_CONFIG.TIMEZONE + '). ' +
     'Order sync: every ' + CT_SYNC.SYNC_EVERY_HOURS + ' hour(s) and after edits to "' + CT_SYNC.PRE_CRM.SHEET +
-    '" or "' + CT_SYNC.SELF_SHIP.SHEET + '".');
+    '" or "' + CT_SYNC.SELF_SHIP.SHEET + '". Tracking import: every ' + CT_IMPORT.EVERY_MINUTES + ' minutes.');
 }
 
 // ─── Menu ───────────────────────────────────────────────────────────────────
@@ -47,6 +49,7 @@ function CT_onOpen() {
     .addItem('Sync orders now (Pre CRM → Order Tracking → Review)', 'CT_syncNow')
     .addItem('Move orders up to the top of Order Tracking', 'CT_moveOrdersToTop')
     .addItem('Make all FSNs clickable (all tabs)', 'CT_linkAllFsns')
+    .addItem('Import tracking data now (seller team sheet → Raw Order Tracking)', 'CT_importTrackingNow')
     .addSeparator()
     .addItem('Update all tracking statuses now', 'CT_updateAllNow')
     .addItem('Update selected rows only', 'CT_updateSelectedRows')
@@ -122,6 +125,7 @@ function CT_testConnections() {
   var daily = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'CT_dailyUpdate'; });
   lines.push('', 'Daily update: ' + (daily ? 'ON, around ' + CT_CONFIG.DAILY_UPDATE_HOUR + ':00' : 'OFF'));
   lines.push('Tab being updated: "' + CT_CONFIG.SHEET_NAME + '"');
+  lines.push('Last tracking import: ' + (PropertiesService.getScriptProperties().getProperty('CT_IMPORT_STATUS') || 'not run yet'));
   SpreadsheetApp.getUi().alert('Connection test', lines.join('\n'), SpreadsheetApp.getUi().ButtonSet.OK);
 }
 

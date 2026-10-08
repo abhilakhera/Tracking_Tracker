@@ -10,7 +10,7 @@ const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Fsn.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
 const G = 6, I = 8, J = 9, K = 10; // 0-based column indexes in a row array
 
 const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
@@ -231,11 +231,12 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
     { handler: 'CT_onOpen', spreadsheet: true, onOpen: true },
     { handler: 'CT_onEdit', spreadsheet: true, onEdit: true },
     { handler: 'CT_hourlySync', everyHours: 1 },
+    { handler: 'CT_importTracking', everyMinutes: 10 },
     { handler: 'CT_dailyUpdate', everyDays: 1, atHour: 8, nearMinute: 15, tz: 'Asia/Kolkata' },
   ]);
   assert.deepStrictEqual(t.triggers.filter((x) => !x.handler.startsWith('CT_')).map((x) => x.handler), ['theirDailyReport', 'onEditHandler']);
   t.run('CT_turnOffDailyUpdate');
-  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['theirDailyReport', 'onEditHandler', 'CT_onOpen', 'CT_onEdit', 'CT_hourlySync']);
+  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['theirDailyReport', 'onEditHandler', 'CT_onOpen', 'CT_onEdit', 'CT_hourlySync', 'CT_importTracking']);
   console.log('Scenario 6 (setup: menu, edit, hourly sync and daily 8 AM triggers; other triggers untouched): OK');
 }
 

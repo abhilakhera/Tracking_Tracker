@@ -50,6 +50,24 @@ Ship Cases, it is **removed** from Review & Rating Data straight away. The robot
 
 ---
 
+## Tracking import (seller team's spreadsheet → "Raw Order Tracking")
+
+Every 10 minutes the robot reads **every tab** of **GANPATI ARTS FLIPKART TRACKING - 2026** and copies
+the **ORDER ID**, **Tracking ID** and **TRANSPORT** columns into the hidden **Raw Order Tracking** tab
+(**Order ID**, **Tracking ID**, **Courier Name**):
+- the columns are found by their headings in the first 10 rows of each tab, wherever they are,
+  with capitals, spaces and small spelling mistakes ignored ("Oder ID", "Tracking No", "Transporter");
+- misspelled **Delhivery**, **Safexpress** and **DP World** are written correctly; other couriers as typed;
+- no two identical rows; rows without both an Order ID and a Tracking ID are left out;
+- the tab is only rewritten when something changed. Other columns in it are never touched.
+
+Only **view** access to the seller team's spreadsheet is needed, but the Google account that runs
+`CT_setup` must have it. Google doesn't let a script react instantly to edits in a spreadsheet it can
+only view, so it checks every 10 minutes (`EVERY_MINUTES` in `CT_Config`). To import right away:
+**📦 Courier Tracking → Import tracking data now**. **Test API connections** shows the last import result.
+
+---
+
 ## FSN links (all tabs)
 
 In **every tab**, any column whose heading in row 1 is **FSN** (in any column position) turns
@@ -79,7 +97,7 @@ The other files (`CT_Utils`, `CT_TrackCourier`, `CT_Delhivery`, `CT_DPWorld`) st
 **Step 1.** Open the main spreadsheet → **Extensions → Apps Script**.
 You'll see your existing script files on the left. **Leave them exactly as they are.**
 
-**Step 2.** Add 8 new files. For **each** row in this table:
+**Step 2.** Add 9 new files. For **each** row in this table:
 1. Click the **+** next to "Files" → **Script**.
 2. Type the name from the right-hand column, then press Enter.
 3. Open the matching file on GitHub, click the **copy** button (two small squares, top
@@ -95,6 +113,7 @@ You'll see your existing script files on the left. **Leave them exactly as they 
 | `apps-script/DPWorld.gs` | `CT_DPWorld` |
 | `apps-script/Sync.gs` | `CT_Sync` |
 | `apps-script/Fsn.gs` | `CT_Fsn` |
+| `apps-script/Import.gs` | `CT_Import` |
 
 > ℹ️ **Leave `appsscript.json` alone.** Your spreadsheet already has this settings file, and
 > it is shared with your other scripts. You don't need to copy ours or change yours.
