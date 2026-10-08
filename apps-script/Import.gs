@@ -63,6 +63,7 @@ function CT_runImport_() {
     var target = CT_IMPORT.TARGET_SPREADSHEET_ID ? SpreadsheetApp.openById(CT_IMPORT.TARGET_SPREADSHEET_ID)
       : SpreadsheetApp.getActiveSpreadsheet();
     var changed = CT_writeRawTracking_(target, collected.rows);
+    if (changed && CT_SYNC.FILL_TRACKING_FROM_RAW) CT_scheduleSync_(); // fill Order Tracking a minute later
     message = 'Tracking import: ' + collected.rows.length + ' row(s) from ' + collected.tabsUsed + ' tab(s)' +
       (collected.tabsSkipped.length ? '; no headings found in: ' + collected.tabsSkipped.join(', ') : '') +
       (changed ? '. "' + CT_IMPORT.TARGET_SHEET + '" updated.' : '. No changes.');

@@ -156,7 +156,8 @@ scenario('live: edits in the seller team\'s spreadsheet start one import a minut
   assert.strictEqual(t.raw().data[1][0], 'OD338718828900872100', 'imported into our "Raw Order Tracking"');
   assert.strictEqual(t.source.getSheetByName('Raw Order Tracking'), null, 'nothing written into the seller team\'s spreadsheet');
   assert.ok(t.source.writes.length === 0, 'the seller team\'s spreadsheet is never changed');
-  assert.strictEqual(t.triggers.length, 0, 'the one-off trigger cleans itself up');
+  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['CT_delayedSync'],
+    'the one-off import trigger cleans itself up; a sync is scheduled to fill Tracking ID / Courier in Order Tracking');
 });
 
 console.log(`\nAll ${passed} import scenarios passed`);

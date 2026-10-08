@@ -300,7 +300,8 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
   var sheet = CT_requireSheet_(ss, CT_CONFIG.SHEET_NAME);
   var trackingIdCol = CT_CONFIG.COLUMNS.TRACKING_ID;
   var columns = [O.ORDER_ID, O.ORDER_DATE, O.SKU, O.FSN, O.NAME, O.PHONE,
-    O.DELIVERY_BY, O.RETURN_TYPE, O.REFUND_STATUS, O.ORDER_ITEM_ID, trackingIdCol, CT_CONFIG.COLUMNS.COURIER, O.REMARKS];
+    O.DELIVERY_BY, O.RETURN_TYPE, O.REFUND_STATUS, O.ORDER_ITEM_ID, trackingIdCol, CT_CONFIG.COLUMNS.COURIER, O.REMARKS,
+    CT_CONFIG.COLUMNS.BRIEF_STATUS, CT_CONFIG.COLUMNS.STATUS, CT_CONFIG.COLUMNS.STATUS_DATE];
   var t = CT_readTable_(sheet, CT_CONFIG.HEADER_ROWS, columns);
   CT_ensureHeader_(sheet, O.ORDER_ITEM_ID, 'Order Item Id');
   if (CT_cleanUpOrderTracking_(sheet, t, pre, log)) t = CT_readTable_(sheet, CT_CONFIG.HEADER_ROWS, columns);
@@ -342,6 +343,7 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
     var self = CT_selfShipFor_(selfShip, item.orderId, item.itemId);
     desired[idx] = {
       isNew: isNew,
+      orderId: item.orderId,
       values: CT_pairs_([
         [O.ORDER_ID, item.orderId], [O.ORDER_DATE, CT_dateOnly_(item.orderedOn, tz)], [O.SKU, item.sku],
         [O.FSN, item.fsn], [O.NAME, item.name], [O.PHONE, item.phone],
@@ -358,10 +360,13 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
     var oid = t.text(r, O.ORDER_ID);
     if (!oid) continue;
     var self2 = CT_selfShipFor_(selfShip, oid, t.text(r, O.ORDER_ITEM_ID));
-    desired[r] = { isNew: false, values: CT_pairs_([
+    desired[r] = { isNew: false, orderId: oid, values: CT_pairs_([
       [O.RETURN_TYPE, self2 ? self2.requestType : ''], [O.REFUND_STATUS, self2 ? self2.refundStatus : ''],
     ]) };
   }
+
+  // Tracking ID and Courier from the seller team's sheet ("Raw Order Tracking").
+  if (CT_SYNC.FILL_TRACKING_FROM_RAW) CT_fillTrackingFromRaw_(ss, t, desired, log);
 
   // Keep only the cells that actually change.
   var changes = {};
@@ -375,9 +380,84 @@ function CT_syncOrderTracking_(ss, tz, pre, selfShip, log) {
   });
 
   CT_writeChanges_(sheet, t, changes, [O.ORDER_ITEM_ID, O.ORDER_ID], log, {
-    dateCols: [O.ORDER_DATE, O.DELIVERY_BY], textCols: [O.ORDER_ITEM_ID], linkCols: [O.FSN],
+    dateCols: [O.ORDER_DATE, O.DELIVERY_BY], textCols: [O.ORDER_ITEM_ID, trackingIdCol], linkCols: [O.FSN],
   });
   return stats;
+}
+
+/**
+ * Read "Raw Order Tracking" (filled by the tracking import). Returns
+ * { ORDERID (upper-case): [{ trackingId, courier }, ...] } with each Tracking ID once, in sheet
+ * order, or null if the tab or its headings are missing.
+ */
+function CT_readRawTracking_(ss) {
+  var sheet = ss.getSheetByName(CT_IMPORT.TARGET_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return null;
+  var H = CT_IMPORT.TARGET_HEADINGS;
+  var lastCol = sheet.getLastColumn();
+  var heads = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map(function (h) {
+    return String(h).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  });
+  var col = function (name) { return heads.indexOf(name.toUpperCase().replace(/[^A-Z0-9]/g, '')); };
+  var cO = col(H.ORDER_ID), cT = col(H.TRACKING_ID), cC = col(H.COURIER);
+  if (cO < 0 || cT < 0) return null;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getDisplayValues();
+  var out = {};
+  rows.forEach(function (r) {
+    var orderId = CT_cleanCell_(r[cO]).toUpperCase();
+    var trackingId = CT_cleanCell_(r[cT]);
+    if (!orderId || !trackingId) return;
+    var list = out[orderId] = out[orderId] || [];
+    var courier = cC >= 0 ? CT_cleanCell_(r[cC]) : '';
+    var same = list.filter(function (x) { return x.trackingId === trackingId; })[0];
+    if (same) { if (!same.courier) same.courier = courier; return; }
+    list.push({ trackingId: trackingId, courier: courier });
+  });
+  return out;
+}
+
+/**
+ * Put Tracking ID (G) and Courier Partner (H) from "Raw Order Tracking" into the desired values
+ * of each Order Tracking row, matched by Order ID. The seller team's sheet wins: a different
+ * Tracking ID replaces the one in the row, and the old status (Brief Status, Tracking Status,
+ * Status Date) is cleared because it belonged to the old Tracking ID. One Tracking ID for an
+ * order → every product row of it; one per product → given out in row order; otherwise the
+ * rows are left alone and the log says so. Rows without a match are not touched.
+ */
+function CT_fillTrackingFromRaw_(ss, t, desired, log) {
+  var raw = CT_readRawTracking_(ss);
+  if (!raw) return;
+  var C = CT_CONFIG.COLUMNS;
+  var rowsOfOrder = {};
+  Object.keys(desired).map(Number).sort(function (a, b) { return a - b; }).forEach(function (idx) {
+    var oid = CT_cleanCell_(desired[idx].orderId).toUpperCase();
+    if (oid) (rowsOfOrder[oid] = rowsOfOrder[oid] || []).push(idx);
+  });
+  Object.keys(rowsOfOrder).forEach(function (oid) {
+    var entries = raw[oid];
+    if (!entries || !entries.length) return;
+    var rows = rowsOfOrder[oid];
+    if (entries.length > 1 && entries.length !== rows.length) {
+      log.add(CT_CONFIG.SHEET_NAME, desired[rows[0]].orderId, 'INFO', 'The seller team\'s sheet has ' + entries.length +
+        ' Tracking IDs (' + entries.map(function (e) { return e.trackingId; }).join(', ') + ') for this order, but Order Tracking has ' +
+        rows.length + ' row(s) for it, so Tracking ID and Courier were not filled in automatically.');
+      return;
+    }
+    rows.forEach(function (idx, k) {
+      var entry = entries.length === 1 ? entries[0] : entries[k];
+      var values = desired[idx].values;
+      var current = idx < t.count ? t.text(idx, C.TRACKING_ID) : '';
+      values[C.TRACKING_ID] = entry.trackingId;
+      if (entry.courier) values[C.COURIER] = entry.courier;
+      if (current && current !== entry.trackingId) {
+        values[C.BRIEF_STATUS] = '';
+        values[C.STATUS] = '';
+        values[C.STATUS_DATE] = '';
+        log.add(CT_CONFIG.SHEET_NAME + ' row ' + (t.firstRow + idx), desired[idx].orderId, 'INFO',
+          'Tracking ID changed in the seller team\'s sheet: ' + current + ' → ' + entry.trackingId + '. The old status was cleared; the next tracking run fills it again.');
+      }
+    });
+  });
 }
 
 /**

@@ -449,4 +449,62 @@ scenario('Order Tracking mirrors Pre CRM: orders deleted from Pre CRM go; rows w
     [['Removed: this order is no longer in Pre CRM.', 'OD9', 'TRK9']]);
 });
 
+// ── 13. Tracking ID and Courier from "Raw Order Tracking" ──
+scenario('Tracking ID and Courier are filled from "Raw Order Tracking" (seller team\'s sheet)', () => {
+  const p = (o, item, sku) => pre({ sku, fsn: 'F' + item, order: o, item, on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' });
+  const ot = (o, item, sku, g = '', h = '', i = '', j = '', k = '') => [o, ist(2026, 9, 21), sku, link('F' + item), 'N', 1, g, h, i, j, k, '', '', '', '', item];
+  const t = load({
+    'Pre CRM': [PRE_HEADER, p('OD1', '1', 'S1'), p('OD2', '21', 'S2a'), p('OD2', '22', 'S2b'), p('OD3', '31', 'S3a'), p('OD3', '32', 'S3b'),
+      p('OD4', '41', 'S4a'), p('OD4', '42', 'S4b'), p('OD5', '5', 'S5'), p('OD6', '6', 'S6'), p('OD7', '7', 'S7')],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
+      ot('OD1', '1', 'S1'),
+      ot('OD2', '21', 'S2a'), ot('OD2', '22', 'S2b'),
+      ot('OD3', '31', 'S3a'), ot('OD3', '32', 'S3b'),
+      ot('OD4', '41', 'S4a'), ot('OD4', '42', 'S4b'),
+      ot('OD5', '5', 'S5', 'OLDTRK', 'Delhivery', 'In Transit', 'In Transit (Pune)', ist(2026, 10, 1)),
+      ot('OD6', '6', 'S6', 'MINE', 'BNG'),
+      ot('OD7', '7', 'S7', 'SAME7', 'Delhivery', 'Delivered', 'Delivered (Goa)', ist(2026, 10, 2))],
+    'Raw Order Tracking': [['Order ID', ' Tracking ID', 'Courier Name'],
+      ['od1', '42387010178824', 'Delhivery'],                                // case doesn't matter
+      ['OD2', '100041695709', 'Safexpress'],                                 // one ID for a 2-product order
+      ['OD3', 'T31', 'Delhivery'], ['OD3', 'T32', 'Delhivery'],              // one per product
+      ['OD4', 'A', 'DP World'], ['OD4', 'B', 'DP World'], ['OD4', 'C', 'DP World'], // 3 IDs, 2 rows → left alone
+      ['OD5', 'NEWTRK', 'Delhivery'],                                        // changed by the seller team
+      ['OD7', 'SAME7', 'Delhivery']],                                        // unchanged
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  const rows = t.tab('Order Tracking').slice(1).map((r) => [r[0], r[6], r[7]]);
+  assert.deepStrictEqual(rows, [
+    ['OD1', '42387010178824', 'Delhivery'],
+    ['OD2', '100041695709', 'Safexpress'], ['OD2', '100041695709', 'Safexpress'],
+    ['OD3', 'T31', 'Delhivery'], ['OD3', 'T32', 'Delhivery'],
+    ['OD4', '', ''], ['OD4', '', ''],
+    ['OD5', 'NEWTRK', 'Delhivery'],
+    ['OD6', 'MINE', 'BNG'],                 // nothing in the seller team's sheet: what you typed stays
+    ['OD7', 'SAME7', 'Delhivery'],
+  ]);
+  const ot5 = t.tab('Order Tracking')[8];
+  assert.deepStrictEqual([ot5[8], ot5[9], ot5[10]], ['', '', ''], 'old status cleared when the Tracking ID changed');
+  const ot7 = t.tab('Order Tracking')[10];
+  assert.deepStrictEqual([ot7[8], ot7[9]], ['Delivered', 'Delivered (Goa)'], 'status kept when the Tracking ID is the same');
+  const log = t.log();
+  assert.ok(log.some((m) => m.includes('OD4') && m.includes('3 Tracking IDs (A, B, C)') && m.includes('2 row(s)')), log.join('\n'));
+  assert.ok(log.some((m) => m.includes('OD5') && m.includes('OLDTRK → NEWTRK')), log.join('\n'));
+  // A second sync changes nothing.
+  const before = t.ss.writes.length;
+  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.ss.writes.slice(before).filter((w) => !w.includes('Log')), []);
+});
+
+scenario('without a "Raw Order Tracking" tab nothing is filled (and nothing breaks)', () => {
+  const t = load({
+    'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' })],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id'])], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  const r = t.tab('Order Tracking')[1];
+  assert.ok(r[0] === 'OD1' && !r[6] && !r[7], 'Tracking ID and Courier left empty');
+});
+
 console.log(`\nAll ${passed} sync scenarios passed`);

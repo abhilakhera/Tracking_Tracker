@@ -15,8 +15,8 @@ changes the **Order Tracking** tab, and it only ever touches its own automatic t
 | Column | Heading | Filled by |
 |---|---|---|
 | A–F | Order Id, Order Date, SKU, FSN, Customer Name, Contact Number | Robot, from **Pre CRM** |
-| G | Tracking ID | **You** |
-| H | Courier Partner | **You** |
+| G | Tracking ID | Robot, from the seller team's sheet ("Raw Order Tracking"); you type it only if it isn't there |
+| H | Courier Partner | Robot, from the seller team's sheet; otherwise you |
 | I | Brief Status | Robot: just "Delivered", "In Transit", … |
 | J | Tracking Status | Robot: the full latest status from the courier |
 | K | Status Date | Robot: the date of that status |
@@ -60,6 +60,15 @@ the **ORDER ID**, **Tracking ID** and **TRANSPORT** columns into the hidden **Ra
 - misspelled **Delhivery**, **Safexpress** and **DP World** are written correctly; other couriers as typed;
 - no two identical rows; rows without both an Order ID and a Tracking ID are left out;
 - the tab is only rewritten when something changed. Other columns in it are never touched.
+
+**Filling Order Tracking:** after each import that changed something (and on every sync), the robot fills
+**Tracking ID (G)** and **Courier Partner (H)** in Order Tracking from "Raw Order Tracking", matched by Order ID:
+- the seller team's sheet wins: if they change a Tracking ID, the row gets the new one, and its old status
+  (Brief Status, Tracking Status, Status Date) is cleared so the next tracking run fills it again;
+- one Tracking ID for an order with several products → every product row gets it; one per product → given
+  out in row order; any other mismatch → those rows are left alone and the Order Sync Log says so;
+- orders the seller team's sheet doesn't have keep whatever you typed.
+Turn this off with `FILL_TRACKING_FROM_RAW: false` in `CT_Config`.
 
 **When it runs:** about **1 minute after anyone edits** the seller team's spreadsheet (typing, pasting,
 or adding a new tab; many quick edits lead to one import), plus a safety-net check **every 30 minutes**,
