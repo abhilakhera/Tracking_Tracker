@@ -231,12 +231,14 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
     { handler: 'CT_onOpen', spreadsheet: true, onOpen: true },
     { handler: 'CT_onEdit', spreadsheet: true, onEdit: true },
     { handler: 'CT_hourlySync', everyHours: 1 },
-    { handler: 'CT_importTracking', everyMinutes: 10 },
+    { handler: 'CT_importTracking', everyMinutes: 30 },
+    { handler: 'CT_onSourceChange', spreadsheet: '1hI8DpYwC0i3YQsDUIexzj_IWb2-6OyE476B89HKgAp8', onEdit: true },
+    { handler: 'CT_onSourceChange', spreadsheet: '1hI8DpYwC0i3YQsDUIexzj_IWb2-6OyE476B89HKgAp8', onChange: true },
     { handler: 'CT_dailyUpdate', everyDays: 1, atHour: 8, nearMinute: 15, tz: 'Asia/Kolkata' },
   ]);
   assert.deepStrictEqual(t.triggers.filter((x) => !x.handler.startsWith('CT_')).map((x) => x.handler), ['theirDailyReport', 'onEditHandler']);
   t.run('CT_turnOffDailyUpdate');
-  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['theirDailyReport', 'onEditHandler', 'CT_onOpen', 'CT_onEdit', 'CT_hourlySync', 'CT_importTracking']);
+  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['theirDailyReport', 'onEditHandler', 'CT_onOpen', 'CT_onEdit', 'CT_hourlySync', 'CT_importTracking', 'CT_onSourceChange', 'CT_onSourceChange']);
   console.log('Scenario 6 (setup: menu, edit, hourly sync and daily 8 AM triggers; other triggers untouched): OK');
 }
 

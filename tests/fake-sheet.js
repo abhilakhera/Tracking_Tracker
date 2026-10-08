@@ -83,9 +83,11 @@ function makeScriptApp(triggers) {
     const spec = { handler };
     const b = {
       timeBased: () => b,
-      forSpreadsheet: () => { spec.spreadsheet = true; return b; },
+      // An ID (another spreadsheet) is recorded as is; this spreadsheet's object as true.
+      forSpreadsheet: (ss) => { spec.spreadsheet = typeof ss === 'string' ? ss : true; return b; },
       onOpen: () => { spec.onOpen = true; return b; },
       onEdit: () => { spec.onEdit = true; return b; },
+      onChange: () => { spec.onChange = true; return b; },
       after: (ms) => { spec.after = ms; return b; },
       everyHours: (n) => { spec.everyHours = n; return b; },
       everyMinutes: (n) => { spec.everyMinutes = n; return b; },

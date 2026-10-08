@@ -179,7 +179,7 @@ var CT_SYNC = {
  *  they are and even with small spelling mistakes. Only reading access to the source is needed.
  */
 var CT_IMPORT = {
-  // "GANPATI ARTS FLIPKART TRACKING - 2026" (only view access is needed).
+  // "GANPATI ARTS FLIPKART TRACKING - 2026". It is only read, never changed.
   SOURCE_SPREADSHEET_ID: '1hI8DpYwC0i3YQsDUIexzj_IWb2-6OyE476B89HKgAp8',
 
   // Headings to look for in the source (one of these, spelling mistakes allowed).
@@ -193,7 +193,9 @@ var CT_IMPORT = {
   // Source tabs to leave out (exact names), if any.
   SKIP_SOURCE_TABS: [],
 
-  // Where the data goes in this spreadsheet. The tab is created (hidden) if it doesn't exist.
+  // Where the data goes: "Flipkart - Ganpati Arts One Stop Data Sheet" (this spreadsheet), tab
+  // "Raw Order Tracking". The tab is created (hidden) if it doesn't exist.
+  TARGET_SPREADSHEET_ID: '1u_f4uTXyrv4T2a6muBKFgKEtH1pjP4xeHekJ03qCRRk',
   TARGET_SHEET: 'Raw Order Tracking',
   TARGET_HEADINGS: { ORDER_ID: 'Order ID', TRACKING_ID: 'Tracking ID', COURIER: 'Courier Name' },
 
@@ -201,6 +203,9 @@ var CT_IMPORT = {
   // corrected; any other courier (e.g. BNG) is copied as it is.
   COURIER_NAMES: { DELHIVERY: 'Delhivery', SAFEXPRESS: 'Safexpress', DPWORLD: 'DP World' },
 
-  // How often to check the source for changes: 1, 5, 10, 15 or 30 minutes.
-  EVERY_MINUTES: 10,
+  // Live updates: an edit in the seller team's spreadsheet starts an import this many seconds
+  // later (needs edit access there; it is only read). Many quick edits → one import.
+  LIVE_DELAY_SECONDS: 60,
+  // Safety net, for changes Google doesn't report: also import every 1, 5, 10, 15 or 30 minutes.
+  EVERY_MINUTES: 30,
 };

@@ -8,9 +8,11 @@
  *  - "Delhivery", "Safexpress" and "DP World" are written correctly even when misspelled in the
  *    source; other couriers are copied as they are.
  *  - No two identical rows; rows without an Order ID and a Tracking ID are left out.
- *  - Runs every few minutes (CT_IMPORT.EVERY_MINUTES) and from the menu. The tab is rewritten
- *    only when something changed. Google does not let a script react instantly to edits in a
- *    spreadsheet it can only view, so checking regularly is how it stays up to date.
+ *  - Live: an edit (or a new tab) in the seller team's spreadsheet starts an import about a minute
+ *    later (CT_IMPORT.LIVE_DELAY_SECONDS; many quick edits → one import). This needs edit access
+ *    to that spreadsheet; it is only ever read, never changed. A safety-net import also runs every
+ *    CT_IMPORT.EVERY_MINUTES (for changes Google doesn't report, e.g. made by other scripts),
+ *    and from the menu. The tab is rewritten only when something changed.
  */
 
 /** Menu: import now. */
@@ -19,9 +21,27 @@ function CT_importTrackingNow() {
   CT_notify_({ interactive: true }, result);
 }
 
-/** Time trigger (created by CT_setup). */
+/** Safety-net time trigger (created by CT_setup). */
 function CT_importTracking() {
   CT_runImport_();
+}
+
+/**
+ * Edit / change trigger on the SELLER TEAM's spreadsheet (created by CT_setup). Only schedules
+ * an import a little later, so a burst of edits leads to one import. Nothing here may use
+ * getActiveSpreadsheet(): in this trigger it is the seller team's spreadsheet, not ours.
+ */
+function CT_onSourceChange(e) {
+  var pending = ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === 'CT_delayedImport';
+  });
+  if (!pending) ScriptApp.newTrigger('CT_delayedImport').timeBased().after(CT_IMPORT.LIVE_DELAY_SECONDS * 1000).create();
+}
+
+/** One-off trigger a little after an edit in the seller team's spreadsheet. */
+function CT_delayedImport() {
+  CT_deleteTriggers_('CT_delayedImport');
+  if (/already running/.test(CT_runImport_())) CT_onSourceChange(); // try again a little later
 }
 
 /** Returns a one-line result, which is also kept for "Test API connections". */
@@ -38,7 +58,11 @@ function CT_runImport_() {
         'account that ran CT_setup can view it. (' + e.message + ')');
     }
     var collected = CT_collectSourceRows_(source);
-    var changed = CT_writeRawTracking_(SpreadsheetApp.getActiveSpreadsheet(), collected.rows);
+    // Always name our spreadsheet by ID: when an edit in the seller team's spreadsheet woke us up,
+    // the "active" spreadsheet is theirs.
+    var target = CT_IMPORT.TARGET_SPREADSHEET_ID ? SpreadsheetApp.openById(CT_IMPORT.TARGET_SPREADSHEET_ID)
+      : SpreadsheetApp.getActiveSpreadsheet();
+    var changed = CT_writeRawTracking_(target, collected.rows);
     message = 'Tracking import: ' + collected.rows.length + ' row(s) from ' + collected.tabsUsed + ' tab(s)' +
       (collected.tabsSkipped.length ? '; no headings found in: ' + collected.tabsSkipped.join(', ') : '') +
       (changed ? '. "' + CT_IMPORT.TARGET_SHEET + '" updated.' : '. No changes.');

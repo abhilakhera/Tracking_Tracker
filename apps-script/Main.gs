@@ -33,11 +33,20 @@ function CT_setup() {
   ScriptApp.newTrigger('CT_hourlySync').timeBased().everyHours(CT_SYNC.SYNC_EVERY_HOURS).create();
   CT_deleteTriggers_('CT_importTracking');
   ScriptApp.newTrigger('CT_importTracking').timeBased().everyMinutes(CT_IMPORT.EVERY_MINUTES).create();
+  // Live import: react to edits in the seller team's spreadsheet (needs edit access there).
+  CT_deleteTriggers_('CT_onSourceChange');
+  var live = 'live (about ' + CT_IMPORT.LIVE_DELAY_SECONDS + ' s after an edit there) + every ' + CT_IMPORT.EVERY_MINUTES + ' minutes';
+  try {
+    ScriptApp.newTrigger('CT_onSourceChange').forSpreadsheet(CT_IMPORT.SOURCE_SPREADSHEET_ID).onEdit().create();
+    ScriptApp.newTrigger('CT_onSourceChange').forSpreadsheet(CT_IMPORT.SOURCE_SPREADSHEET_ID).onChange().create();
+  } catch (e) {
+    live = 'every ' + CT_IMPORT.EVERY_MINUTES + ' minutes only (could not watch the seller team\'s spreadsheet for edits: ' + e.message + ')';
+  }
   CT_installDailyTrigger_();
   console.log('✅ Courier Tracking is set up. Reload the spreadsheet to see the "📦 Courier Tracking" menu. ' +
     'Daily tracking update: around ' + CT_CONFIG.DAILY_UPDATE_HOUR + ':00 (' + CT_CONFIG.TIMEZONE + '). ' +
     'Order sync: every ' + CT_SYNC.SYNC_EVERY_HOURS + ' hour(s) and after edits to "' + CT_SYNC.PRE_CRM.SHEET +
-    '" or "' + CT_SYNC.SELF_SHIP.SHEET + '". Tracking import: every ' + CT_IMPORT.EVERY_MINUTES + ' minutes.');
+    '" or "' + CT_SYNC.SELF_SHIP.SHEET + '". Tracking import: ' + live + '.');
 }
 
 // ─── Menu ───────────────────────────────────────────────────────────────────

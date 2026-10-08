@@ -52,7 +52,7 @@ Ship Cases, it is **removed** from Review & Rating Data straight away. The robot
 
 ## Tracking import (seller team's spreadsheet → "Raw Order Tracking")
 
-Every 10 minutes the robot reads **every tab** of **GANPATI ARTS FLIPKART TRACKING - 2026** and copies
+The robot reads **every tab** of **GANPATI ARTS FLIPKART TRACKING - 2026** and copies
 the **ORDER ID**, **Tracking ID** and **TRANSPORT** columns into the hidden **Raw Order Tracking** tab
 (**Order ID**, **Tracking ID**, **Courier Name**):
 - the columns are found by their headings in the first 10 rows of each tab, wherever they are,
@@ -61,10 +61,13 @@ the **ORDER ID**, **Tracking ID** and **TRANSPORT** columns into the hidden **Ra
 - no two identical rows; rows without both an Order ID and a Tracking ID are left out;
 - the tab is only rewritten when something changed. Other columns in it are never touched.
 
-Only **view** access to the seller team's spreadsheet is needed, but the Google account that runs
-`CT_setup` must have it. Google doesn't let a script react instantly to edits in a spreadsheet it can
-only view, so it checks every 10 minutes (`EVERY_MINUTES` in `CT_Config`). To import right away:
-**📦 Courier Tracking → Import tracking data now**. **Test API connections** shows the last import result.
+**When it runs:** about **1 minute after anyone edits** the seller team's spreadsheet (typing, pasting,
+or adding a new tab; many quick edits lead to one import), plus a safety-net check **every 30 minutes**,
+plus **📦 Courier Tracking → Import tracking data now**. **Test API connections** shows the last result.
+
+The Google account that runs `CT_setup` needs **edit** access to the seller team's spreadsheet for the
+"1 minute after an edit" part (with view access only, the 30-minute check still works). Their
+spreadsheet is only ever **read**, never changed.
 
 ---
 

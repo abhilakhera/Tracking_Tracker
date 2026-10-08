@@ -15,24 +15,27 @@ function load(sourceTabs, ourTabs, opts = {}) {
   const ours = makeSpreadsheet(ourTabs);
   const props = {};
   const toasts = [];
+  const triggers = [];
   ours.toast = (m) => toasts.push(m);
   const ctx = vm.createContext({
     console: { log() {}, error() {} },
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ours,
+      // In a trigger on the seller team's spreadsheet, the "active" spreadsheet is THEIRS.
+      getActiveSpreadsheet: () => (opts.activeIsSource ? source : ours),
       openById: (id) => {
+        if (id === '1u_f4uTXyrv4T2a6muBKFgKEtH1pjP4xeHekJ03qCRRk') return ours;
         if (opts.noAccess || id !== '1hI8DpYwC0i3YQsDUIexzj_IWb2-6OyE476B89HKgAp8') throw new Error('You do not have permission to access the requested document.');
         return source;
       },
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
     LockService: makeLockService().service,
-    ScriptApp: makeScriptApp([]),
+    ScriptApp: makeScriptApp(triggers),
     UrlFetchApp: { fetch: () => { throw new Error('no API calls'); } },
     Utilities,
   });
   for (const f of FILES) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
-  return { source, ours, props, toasts, run: (code) => vm.runInContext(code, ctx), raw: () => ours.getSheetByName('Raw Order Tracking') };
+  return { source, ours, props, toasts, triggers, run: (code) => vm.runInContext(code, ctx), raw: () => ours.getSheetByName('Raw Order Tracking') };
 }
 
 let passed = 0;
@@ -142,6 +145,18 @@ scenario('heading spellings', () => {
     assert.strictEqual(f(s), 'COURIER', s);
   for (const s of ['Order Item ID', 'Order Date', 'Tracking Status', 'S.No', 'Date', ''])
     assert.strictEqual(f(s), '', s);
+});
+
+scenario('live: edits in the seller team\'s spreadsheet start one import a minute later, written into OUR spreadsheet', () => {
+  const t = load(sourceTabs(), target(), { activeIsSource: true });
+  t.run('CT_onSourceChange({})'); t.run('CT_onSourceChange({})'); t.run('CT_onSourceChange({})');
+  assert.deepStrictEqual(t.triggers.map((x) => [x.handler, x.after]), [['CT_delayedImport', 60000]], 'many edits → one pending import');
+  assert.strictEqual(t.raw().data[1][0], 'OLD', 'not yet');
+  t.run('CT_delayedImport()');
+  assert.strictEqual(t.raw().data[1][0], 'OD338718828900872100', 'imported into our "Raw Order Tracking"');
+  assert.strictEqual(t.source.getSheetByName('Raw Order Tracking'), null, 'nothing written into the seller team\'s spreadsheet');
+  assert.ok(t.source.writes.length === 0, 'the seller team\'s spreadsheet is never changed');
+  assert.strictEqual(t.triggers.length, 0, 'the one-off trigger cleans itself up');
 });
 
 console.log(`\nAll ${passed} import scenarios passed`);
