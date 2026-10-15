@@ -467,7 +467,9 @@ function CT_fillTrackingFromRaw_(ss, t, desired, log) {
  * product beyond the number of times Pre CRM lists it. Of several copies, the row with a
  * Tracking ID / Courier / Remark typed in is the one kept.
  * Every removed row is first copied, complete, to the "Removed Orders" tab, so nothing typed
- * in is ever lost. Rows without an Order Id are left alone. Returns true if rows were removed.
+ * in is ever lost. Empty rows inside the list (nothing typed in A..O) are removed too. Rows
+ * without an Order Id that do hold something (e.g. a typed Tracking ID) are left alone.
+ * Returns true if rows were removed.
  */
 function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   var O = CT_SYNC.ORDER_TRACKING;
@@ -480,6 +482,26 @@ function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   };
   var where = function (i) { return CT_CONFIG.SHEET_NAME + ' row ' + (t.firstRow + i); };
   var remove = {};  // row index → reason
+
+  // 0. Empty rows inside the list: nothing typed in A..O (formulas and the hidden Order Item Id
+  //    don't count), e.g. a row whose cells were cleared instead of the row being deleted.
+  //    If its hidden Order Item Id is still a qualifying product, the sync refills it instead.
+  var lastLetter = CT_columnLetter_(CT_columnNumber_(O.ORDER_ITEM_ID) - 1);
+  var isBlank = function (i) {
+    for (var c = 1; c <= CT_columnNumber_(lastLetter); c++) {
+      var col = CT_columnLetter_(c);
+      if (!t.formula(i, col) && t.text(i, col) !== '') return false;
+    }
+    return true;
+  };
+  var emptyRows = {};
+  for (var e = 0; e < t.count; e++) {
+    if (!isBlank(e)) continue;
+    var k0 = t.text(e, O.ORDER_ITEM_ID);
+    if (k0 && pre.byKey[k0] && pre.byKey[k0].qualifies) continue; // will be refilled
+    remove[e] = 'Removed: empty row' + (k0 ? ' (only the hidden Order Item Id ' + k0 + ' was left; that product is no longer a "Dispatch" order in Pre CRM)' : '') + '.';
+    emptyRows[e] = true;
+  }
 
   // 1. Rows whose product (or, without an Order Item Id, whose order) isn't a qualifying Pre CRM order.
   for (var i = 0; i < t.count; i++) {
@@ -533,6 +555,7 @@ function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   }
   var lastCol = Math.max(sheet.getLastColumn(), CT_columnNumber_(O.ORDER_ITEM_ID));
   var archived = [];
+  var removedCount = 0;
   indexes.forEach(function (i) {
     var row = t.firstRow + i;
     var range = sheet.getRange(row, 1, 1, lastCol);
@@ -540,13 +563,14 @@ function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
     // Delete only if the row still holds the same order and product (rows may have moved meanwhile).
     if (CT_cellText_(now[CT_columnNumber_(O.ORDER_ID) - 1]) !== t.text(i, O.ORDER_ID) ||
         CT_cellText_(now[CT_columnNumber_(O.ORDER_ITEM_ID) - 1]) !== t.text(i, O.ORDER_ITEM_ID)) return;
-    archived.push([new Date(), remove[i]].concat(range.getValues()[0]));
+    if (!emptyRows[i]) archived.push([new Date(), remove[i]].concat(range.getValues()[0]));
     sheet.deleteRow(row);
+    removedCount++;
     log.add(CT_CONFIG.SHEET_NAME + ' row ' + row, t.text(i, O.ORDER_ID), 'INFO',
       remove[i] + (hasTypedData(i) ? ' Its Tracking ID / Courier / Remark were saved in the "' + CT_SYNC.REMOVED_SHEET_NAME + '" tab.' : ''));
   });
   CT_archiveRemovedRows_(sheet, archived.reverse(), lastCol);
-  return archived.length > 0;
+  return removedCount > 0;
 }
 
 /** Append removed rows to the "Removed Orders" tab (created with Order Tracking's headings). */

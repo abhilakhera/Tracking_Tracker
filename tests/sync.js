@@ -507,4 +507,30 @@ scenario('without a "Raw Order Tracking" tab nothing is filled (and nothing brea
   assert.ok(r[0] === 'OD1' && !r[6] && !r[7], 'Tracking ID and Courier left empty');
 });
 
+// ── 14. Empty rows in the middle of the list ──
+scenario('empty rows inside Order Tracking are removed (or refilled if their hidden product still qualifies)', () => {
+  const p = (o, item, remark = 'Dispatch') => pre({ sku: 'S' + item, fsn: 'F' + item, order: o, item, on: ist(2026, 9, 21), name: 'N', phone: 1, remark, by: '' });
+  const full = (o, item) => [o, ist(2026, 9, 21), 'S' + item, link('F' + item), 'N', 1, 'T' + item, 'Delhivery', '', '', '', '', '=Ifs()', '', '', item];
+  const blank = (item = '') => ['', '', '', '', '', '', '', '', '', '', '', '', '=Ifs()', '', '', item];
+  const t = load({
+    'Pre CRM': [PRE_HEADER, p('OD1', '1'), p('OD2', '2', 'Cancelled'), p('OD3', '3'), p('OD4', '4'), p('OD5', '5')],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
+      full('OD1', '1'),
+      blank('2'),            // cleared by hand; product 2 was cancelled → removed
+      full('OD3', '3'),
+      blank('4'),            // cleared by hand, but product 4 is still a Dispatch order → filled again
+      blank(),               // completely empty (only the Remarks formula) → removed
+      ['', '', '', '', '', '', 'TEST1', 'Safexpress', '', '', '', '', '=Ifs()'], // has a typed Tracking ID → kept
+      full('OD5', '5')],
+    'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((r) => [r[0], r[6], r[15]]), [
+    ['OD1', 'T1', '1'], ['OD3', 'T3', '3'], ['OD4', '', '4'], ['', 'TEST1', undefined], ['OD5', 'T5', '5']]);
+  assert.ok(t.tab('Order Tracking').slice(1).every((r) => r[12] === '=Ifs()'), 'formulas on the kept rows untouched');
+  const log = t.log();
+  assert.strictEqual(log.filter((m) => m.includes('Removed: empty row')).length, 2, log.join('\n'));
+  assert.strictEqual(t.ss.getSheetByName('Removed Orders'), null, 'empty rows are not copied to "Removed Orders"');
+});
+
 console.log(`\nAll ${passed} sync scenarios passed`);
