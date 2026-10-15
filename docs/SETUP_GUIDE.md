@@ -109,7 +109,7 @@ The other files (`CT_Utils`, `CT_TrackCourier`, `CT_Delhivery`, `CT_DPWorld`) st
 **Step 1.** Open the main spreadsheet → **Extensions → Apps Script**.
 You'll see your existing script files on the left. **Leave them exactly as they are.**
 
-**Step 2.** Add 9 new files. For **each** row in this table:
+**Step 2.** Add 10 new files. For **each** row in this table:
 1. Click the **+** next to "Files" → **Script**.
 2. Type the name from the right-hand column, then press Enter.
 3. Open the matching file on GitHub, click the **copy** button (two small squares, top
@@ -123,6 +123,7 @@ You'll see your existing script files on the left. **Leave them exactly as they 
 | `apps-script/TrackCourier.gs` | `CT_TrackCourier` |
 | `apps-script/Delhivery.gs` | `CT_Delhivery` |
 | `apps-script/DPWorld.gs` | `CT_DPWorld` |
+| `apps-script/RajSolutions.gs` | `CT_RajSolutions` |
 | `apps-script/Sync.gs` | `CT_Sync` |
 | `apps-script/Fsn.gs` | `CT_Fsn` |
 | `apps-script/Import.gs` | `CT_Import` |
@@ -163,11 +164,12 @@ and run it again.
 
 ---
 
-## Part 3: Your TrackCourier.io key
+## Part 3: Your API keys
 
-**Step 7.** **📦 Courier Tracking → Set / change API keys.**
+**Step 7.** **📦 Courier Tracking → Set / change API keys.** Three boxes appear, one after another:
 - **First box:** paste your **TrackCourier.io key** (it starts with `tc_live_`). Click OK.
 - **Second box:** leave empty (that's for an optional Delhivery token). Click OK.
+- **Third box:** paste your **Raj Solutions key** (it starts with `pk_`; used for DP World). Click OK.
 
 > 🔒 The key is saved privately inside the robot. **Never type it into a cell.**
 > Keys saved in your test sheet don't carry over, so save it again here.
@@ -184,7 +186,8 @@ TRACKCOURIER_REQUESTS_PER_MINUTE: 60,
 
 **Step 9.** **📦 Courier Tracking → Test API connections.** You should see:
 - TrackCourier.io: ✅ connected
-- Delhivery → …, Safexpress → TrackCourier.io, DP World → tracked by hand (skipped)
+- Raj Solutions (DP World): ✅ connected
+- Delhivery → …, Safexpress → TrackCourier.io, DP World → Raj Solutions
 - Daily update: ON, around 8:00
 - Tab being updated: "Order Tracking"
 
@@ -214,7 +217,8 @@ nobody has the spreadsheet open, and checks **only parcels that aren't delivered
 
 ## How many TrackCourier.io requests will I use?
 
-Checking one Delhivery or Safexpress parcel uses **1 request**. DP World uses none (see below).
+Checking one Delhivery or Safexpress parcel uses **1 request**. DP World goes through Raj
+Solutions instead and uses none of your TrackCourier.io requests (see below).
 
 > **Requests per month ≈ undelivered Delhivery + Safexpress parcels × 30**  (one check a day)
 
@@ -231,17 +235,20 @@ fits the Starter plan (5,000). The Courier Tracking Log tab shows your usage aft
 
 ## DP World
 
-Right now there is **no automatic source** for DP World, so DP World rows are **skipped**, like
-BNG: fill in Brief Status, Tracking Status and Status Date by hand.
+DP World is tracked through **Raj Solutions** (rajsolutions.co.in), the shipping partner your
+DP World parcels are booked with, using your **Raj Solutions API key** (Step 7, third box).
+Raj Solutions gets the scans from DP World: booked, picked up, in transit, out for delivery,
+delivered, RTO.
 
-- Until October 2026 the robot read DP World's own tracking page for free. DP World then added a
-  Google reCAPTCHA ("I'm not a robot" check) to it, so every DP World row showed *"Captcha Missing"*.
-- TrackCourier.io's API does not offer DP World / Delex (its website does, but that can't be used
-  by a robot).
-
-If DP World removes the captcha, set DP World's `provider` in `CT_Config` back to `'DPWORLD_WEB'`.
-If DP World gives you an official tracking API (ask your DP World account manager), it can be
-connected.
+- **Speed:** Raj Solutions allows **20 requests a minute**, so the robot asks about 18 dockets a
+  minute. 400 undelivered DP World parcels take about 22 minutes; the robot pauses and continues
+  on its own (Google stops a script after 6 minutes). Delhivery and Safexpress are asked in the
+  same run, in row order.
+- **Where to find the key:** your Raj Solutions account → **API Access Control** → **Current API Key**.
+  If you press **Rotate Key** there, the old key stops working: save the new one with
+  **📦 Courier Tracking → Set / change API keys** (third box).
+- DP World's own tracking page can't be used by a robot: since October 2026 it asks for a Google
+  reCAPTCHA. TrackCourier.io's API doesn't offer DP World either.
 
 ---
 

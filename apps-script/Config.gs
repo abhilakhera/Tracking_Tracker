@@ -69,6 +69,7 @@ var CT_CONFIG = {
   //   provider - where the status comes from:
   //                'DELHIVERY'    = Delhivery's own API (needs a Delhivery token, free)
   //                'TRACKCOURIER' = TrackCourier.io (needs your TrackCourier.io key)
+  //                'RAJSOLUTIONS' = Raj Solutions (needs your Raj Solutions key; used for DP World)
   //                'DPWORLD_WEB'  = DP World's own tracking website (blocked by a captcha since Oct 2026)
   //                'MANUAL'       = no automatic source: rows are skipped, you fill them in by hand
   //                'AUTO'         = Delhivery API if a Delhivery token is saved, else TrackCourier.io
@@ -89,11 +90,10 @@ var CT_CONFIG = {
     DPWORLD: {
       label: 'DP World',
       aliases: ['dpworld', 'dpw', 'delex'],
-      // No automatic source for DP World right now, so its rows are skipped (like BNG):
-      //  - DP World's tracking website asks for a Google reCAPTCHA since Oct 2026 ("Captcha Missing").
-      //  - TrackCourier.io's API does not offer DP World / Delex (only its website does).
-      // If DP World removes the captcha, change 'MANUAL' back to 'DPWORLD_WEB'.
-      provider: 'MANUAL',
+      // Tracked through Raj Solutions (your shipping partner for DP World), with your
+      // Raj Solutions API key. DP World's own website asks for a captcha since Oct 2026,
+      // and TrackCourier.io's API does not offer DP World.
+      provider: 'RAJSOLUTIONS',
     },
   },
 
@@ -105,10 +105,14 @@ var CT_CONFIG = {
   DELHIVERY_BASE_URL: 'https://track.delhivery.com',
   TRACKCOURIER_BASE_URL: 'https://api.trackcourier.io/v1',
   DPWORLD_TRACKING_URL: 'https://api-fr.cargoes.com/track/v4', // what DP World's tracking page uses
+  RAJSOLUTIONS_BASE_URL: 'https://rajsolutions.co.in/api/v1',
 
   // TrackCourier.io allows a set number of requests per minute, depending on your plan
   // (Free: 10, Starter: 60, Pro: 300). Set this to your plan's number.
   TRACKCOURIER_REQUESTS_PER_MINUTE: 60,
+
+  // Raj Solutions allows 20 requests per minute; a little below that leaves room for safety.
+  RAJSOLUTIONS_REQUESTS_PER_MINUTE: 18,
 
   // Technical limits. Google stops a script after 6 minutes, so the script pauses
   // before that and resumes automatically a minute later.

@@ -10,7 +10,7 @@ const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Sync.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
 const G = 6, I = 8, J = 9, K = 10; // 0-based column indexes in a row array
 
 const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
@@ -51,6 +51,13 @@ function setup(rows, props, trackCourierReply, extra = {}) {
       return json(200, { status: 'success', data: {
         trackings: ids.includes('1846272584') ? fixture.data.trackings : [],
         failedTrackings: ids.filter((id) => id !== '1846272584'), skippedTrackings: [] } });
+    }
+    if (url.startsWith('https://rajsolutions.co.in/api/v1/tracking?awb=')) {
+      assert.strictEqual(opts.headers['X-API-Key'], 'RSKEY');
+      const id = decodeURIComponent(url.split('awb=')[1]);
+      if (extra.rajReply) return extra.rajReply(id);
+      const file = path.join(__dirname, 'fixtures', 'rajsolutions-' + id + '.json');
+      return fs.existsSync(file) ? json(200, JSON.parse(fs.readFileSync(file, 'utf8'))) : json(404, { success: false, message: 'Shipment not found.' });
     }
     assert.strictEqual(opts.headers['X-API-Key'], 'TCKEY');
     const m = url.match(/^https:\/\/api\.trackcourier\.io\/v1\/track\?courier=([a-z-]+)&tracking_number=(.+)$/);
@@ -97,7 +104,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
     row('X1', 'Blue Dart'),
     row('BNG123', ' bng '),               // tracked by hand → skipped, no error, nothing written
     row('SX9002', 'Safe Express'),
-  ], { CT_DELHIVERY_TOKEN: 'DTOKEN', CT_TRACKCOURIER_API_KEY: 'TCKEY' }, (slug, id) => {
+  ], { CT_DELHIVERY_TOKEN: 'DTOKEN', CT_TRACKCOURIER_API_KEY: 'TCKEY', CT_RAJSOLUTIONS_API_KEY: 'RSKEY' }, (slug, id) => {
     assert.strictEqual(slug, 'safexpress');
     return id === 'SX9001' ? delivered('Chennai') : json(404, { success: false, error: { code: 'TRACKING_NOT_FOUND', message: 'Tracking number not found' } });
   });
@@ -107,10 +114,11 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   assert.deepStrictEqual([d[1][I], d[1][J], iso(d[1][K])], ['In Transit', 'In Transit - Bag received (Pune_Hub)', '2026-10-02T18:30:00.000Z']);
   // Safexpress via TrackCourier.io
   assert.deepStrictEqual([d[2][I], d[2][J], iso(d[2][K])], ['Delivered', 'Delivered (Chennai)', '2026-10-01T18:30:00.000Z']);
-  // DP World has no automatic source (its website needs a captcha): skipped like BNG, no error
-  assert.deepStrictEqual([d[3][I], d[3][J], d[3][K]], ['', '', '']);
+  // DP World via Raj Solutions
+  assert.deepStrictEqual([d[3][I], d[3][J], iso(d[3][K])], ['Delivered', 'Delivered (Ananthpur)', '2026-09-29T18:30:00.000Z']);
+  // unknown DP World docket → left blank, explained in the log
   assert.deepStrictEqual([d[4][I], d[4][J]], ['', '']);
-  assert.ok(!t.log().some((m) => /^(4|5) /.test(m)), 'no log message for DP World rows');
+  assert.ok(t.log().some((m) => m.startsWith('5 ERROR Raj Solutions has no shipment with this docket')), t.log().join('\n'));
   // already delivered row untouched
   assert.deepStrictEqual([d[5][I], d[5][J], d[5][K]], ['Delivered', 'Delivered - Waybill Delivered (Asansol)', 'old']);
   // BNG is tracked by hand: skipped, nothing written, no error
@@ -131,7 +139,8 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   assert.ok(msgs.some((m) => m.startsWith('8 ERROR Courier name not recognised')), msgs.join('\n'));
   assert.ok(msgs.some((m) => m.startsWith('10 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
   assert.ok(msgs.some((m) => m.includes('TrackCourier.io: 1,234 of 5,000 requests used this month.')), msgs.join('\n'));
-  assert.ok(!t.calls.some((c) => c.includes('cargoes.com') || c.includes('1846272584')), 'DP World is not sent anywhere');
+  assert.ok(!t.calls.some((c) => c.includes('cargoes.com') || c.includes('trackcourier.io/v1/track?courier=delex')), 'DP World only goes to Raj Solutions');
+  assert.ok(t.calls.includes('GET https://rajsolutions.co.in/api/v1/tracking?awb=1846272584'), t.calls.join('\n'));
   assert.ok(!t.calls.some((c) => c.includes('2222222222222')), 'delivered row should not be re-checked');
   // Starter plan = 60 requests/minute → the 2nd TrackCourier request waits ~1 s.
   assert.ok(t.slept() >= 500, 'requests should be paced, slept ' + t.slept() + ' ms');
@@ -298,4 +307,39 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   c.run('CT_dailyUpdate');
   assert.ok(c.log().some((m) => /^2 ERROR DP World's tracking website now asks for a captcha.*'MANUAL'/.test(m)), c.log().join('\n'));
   console.log('Scenario 10 (DP World website reader still works when switched back on; captcha explained): OK');
+}
+
+// ── Scenario 11: TrackCourier.io and Raj Solutions mixed: a pause keeps row order, so every continuation makes progress ──
+{
+  const rows = [];
+  for (let n = 0; n < 6; n++) { rows.push(row('SX' + n, 'Safexpress')); rows.push(row('DPW' + n, 'DP World')); }
+  let asked = 0;
+  const t = setup(rows, { CT_TRACKCOURIER_API_KEY: 'TCKEY', CT_RAJSOLUTIONS_API_KEY: 'RSKEY' }, (slug, id) => delivered('TC-' + id), {
+    rajReply: (id) => json(200, { success: true, data: { shipment: { status: 'in_transit' },
+      tracking_events: [{ status: 'PICKED', location: 'Hub-' + id + ', X', timestamp: '2026-10-14 10:00:00' }] } }),
+    // Google's time limit arrives after 5 questions in each run.
+    onFetch: () => { if (++asked % 5 === 0) vm.runInContext('CT_RUN_DEADLINE_ = 1;', t.ctx); },
+  });
+  t.run('CT_dailyUpdate');
+  let continuations = 0;
+  for (let guard = 0; guard < 10 && t.props.CT_RESUME_ROW; guard++) { asked = 0; continuations++; t.run('CT_continueUpdate'); }
+  assert.strictEqual(t.props.CT_RESUME_ROW, undefined, 'finished');
+  assert.ok(continuations >= 2, 'it really paused (' + continuations + ' continuations)');
+  t.data.slice(1).forEach((r, i) => assert.ok(r[J], 'row ' + (i + 2) + ' filled'));
+  assert.strictEqual(t.data[2][J], 'In Transit - Picked (Hub-DPW0)');
+  const askedIds = t.calls.map((c) => c.split(/tracking_number=|awb=/)[1]);
+  assert.strictEqual(new Set(askedIds).size, askedIds.length, 'no number is asked twice: ' + askedIds.join(','));
+  console.log('Scenario 11 (TrackCourier.io + Raj Solutions pause/continue in row order, nothing asked twice): OK');
+}
+
+// ── Scenario 12: a rejected Raj Solutions key only stops DP World ──
+{
+  const t = setup([row('1846272584', 'DP World'), row('SXA', 'Safexpress'), row('1846272246', 'DP World')],
+    { CT_TRACKCOURIER_API_KEY: 'TCKEY', CT_RAJSOLUTIONS_API_KEY: 'RSKEY' }, () => delivered('Pune'),
+    { rajReply: () => json(401, { success: false, message: 'Invalid or expired API key.' }) });
+  t.run('CT_dailyUpdate');
+  assert.strictEqual(t.data[2][I], 'Delivered', 'Safexpress still tracked');
+  assert.strictEqual(t.calls.filter((c) => c.includes('rajsolutions')).length, 1, 'asked once, then DP World is skipped');
+  assert.ok(t.log().some((m) => m.startsWith('4 ERROR Raj Solutions rejected the API key')), t.log().join('\n'));
+  console.log('Scenario 12 (bad Raj Solutions key only stops DP World): OK');
 }

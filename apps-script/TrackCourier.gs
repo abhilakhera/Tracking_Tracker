@@ -11,53 +11,20 @@
  */
 
 /**
- * Track a list of jobs ({ courierKey, id }), one request per number, paced to
- * stay under the plan's per-minute limit (CT_CONFIG.TRACKCOURIER_REQUESTS_PER_MINUTE).
- * Returns { 'COURIERKEY|id': { status, date } | { error } | { deferred } }.
- * "deferred" means "not asked this time": the run pauses and continues a minute later.
+ * Ask TrackCourier.io about one job ({ courierKey, id }). Returns { status, date } | { error }
+ * | { deferred } (429: the plan's per-minute limit was hit). Throws for problems that affect
+ * every number (bad key, plan used up). Pacing is done by CT_trackPaced_ (Main.gs).
  */
-function CT_trackWithTrackCourier_(jobs) {
-  var key = CT_getSecret_('CT_TRACKCOURIER_API_KEY');
-  if (!key) throw new Error('No TrackCourier.io API key saved. Use the menu: Courier Tracking → Set / change API keys.');
-  var gapMs = Math.ceil(60000 / Math.max(1, CT_CONFIG.TRACKCOURIER_REQUESTS_PER_MINUTE));
-
-  var results = {};
-  var stopped = false;
-  var fatal = '';        // a problem that affects every number (bad key, plan used up)
-  var fatalFor = {};     // courierKey → a problem with just that courier (name unknown to TrackCourier.io)
-  var lastRequestAt = 0;
-  jobs.forEach(function (job) {
-    var jobKey = job.courierKey + '|' + job.id;
-    if (fatal) { results[jobKey] = { error: fatal }; return; }
-    if (fatalFor[job.courierKey]) { results[jobKey] = { error: fatalFor[job.courierKey] }; return; }
-    if (stopped || CT_timeIsUp_()) { results[jobKey] = { deferred: true }; return; }
-
-    var wait = lastRequestAt + gapMs - Date.now();
-    if (wait > 0) Utilities.sleep(wait);
-    lastRequestAt = Date.now();
-
-    var slug = CT_CONFIG.COURIERS[job.courierKey].trackCourierSlug;
-    var response = UrlFetchApp.fetch(CT_CONFIG.TRACKCOURIER_BASE_URL + '/track?courier=' + encodeURIComponent(slug) +
-      '&tracking_number=' + encodeURIComponent(job.id), {
-      method: 'get',
-      headers: { 'X-API-Key': key, Accept: 'application/json' },
-      muteHttpExceptions: true,
-    });
-    if (response.getResponseCode() === 429) {
-      // Per-minute limit hit anyway: stop asking, continue on the next run.
-      stopped = true;
-      results[jobKey] = { deferred: true };
-      return;
-    }
-    try {
-      results[jobKey] = CT_handleTrackCourierResponse_(response.getResponseCode(), response.getContentText(), slug);
-    } catch (e) {
-      if (e.courierOnly) fatalFor[job.courierKey] = e.message;
-      else fatal = e.message;
-      results[jobKey] = { error: e.message };
-    }
+function CT_askTrackCourier_(job, key) {
+  var slug = CT_CONFIG.COURIERS[job.courierKey].trackCourierSlug;
+  var response = UrlFetchApp.fetch(CT_CONFIG.TRACKCOURIER_BASE_URL + '/track?courier=' + encodeURIComponent(slug) +
+    '&tracking_number=' + encodeURIComponent(job.id), {
+    method: 'get',
+    headers: { 'X-API-Key': key, Accept: 'application/json' },
+    muteHttpExceptions: true,
   });
-  return results;
+  if (response.getResponseCode() === 429) return { deferred: true };
+  return CT_handleTrackCourierResponse_(response.getResponseCode(), response.getContentText(), slug);
 }
 
 /**

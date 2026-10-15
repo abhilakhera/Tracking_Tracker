@@ -109,6 +109,7 @@ function CT_setApiKeys() {
   var keys = [
     ['CT_TRACKCOURIER_API_KEY', 'TrackCourier.io API key (starts with tc_live_)'],
     ['CT_DELHIVERY_TOKEN', 'Delhivery API token (optional, leave empty if you don\'t have one)'],
+    ['CT_RAJSOLUTIONS_API_KEY', 'Raj Solutions API key, for DP World (starts with pk_)'],
   ];
   for (var i = 0; i < keys.length; i++) {
     var name = keys[i][0];
@@ -127,9 +128,9 @@ function CT_setApiKeys() {
 
 function CT_testConnections() {
   var names = { DELHIVERY: 'Delhivery API', TRACKCOURIER: 'TrackCourier.io', DPWORLD_WEB: 'DP World website',
-    MANUAL: 'tracked by hand (skipped)' };
+    RAJSOLUTIONS: 'Raj Solutions', MANUAL: 'tracked by hand (skipped)' };
   var usesDpWorldWeb = Object.keys(CT_CONFIG.COURIERS).some(function (k) { return CT_resolveProvider_(k) === 'DPWORLD_WEB'; });
-  var lines = [CT_testTrackCourierConnection_(), CT_testDelhiveryConnection_()];
+  var lines = [CT_testTrackCourierConnection_(), CT_testRajSolutionsConnection_(), CT_testDelhiveryConnection_()];
   if (usesDpWorldWeb) lines.push(CT_testDpWorldConnection_());
   lines.push('');
   Object.keys(CT_CONFIG.COURIERS).forEach(function (key) {
@@ -173,17 +174,72 @@ function CT_deleteTriggers_(handlerName) {
 
 // ─── The update itself ──────────────────────────────────────────────────────
 
-/** Where a courier's numbers are tracked: 'DELHIVERY', 'TRACKCOURIER', 'DPWORLD_WEB' or 'MANUAL'. */
+/** Where a courier's numbers are tracked: 'DELHIVERY', 'TRACKCOURIER', 'RAJSOLUTIONS', 'DPWORLD_WEB' or 'MANUAL'. */
 function CT_resolveProvider_(courierKey) {
   var p = CT_CONFIG.COURIERS[courierKey].provider;
   if (p === 'AUTO') return CT_getSecret_('CT_DELHIVERY_TOKEN') ? 'DELHIVERY' : 'TRACKCOURIER';
   return p;
 }
 
-// Providers in the order they are asked. TrackCourier.io goes last because it is
-// rate-limited: if it has to pause, the rows after the pause point only need
-// re-checking with the free providers.
-var CT_PROVIDER_ORDER_ = ['DELHIVERY', 'DPWORLD_WEB', 'TRACKCOURIER'];
+// Providers in the order they are asked. The ones with a per-minute limit go last, together
+// ('PACED'), one number at a time in row order: if they have to pause, every row above the
+// pause point is done, and the rows after it only need re-checking with the unlimited providers.
+var CT_PROVIDER_ORDER_ = ['DELHIVERY', 'DPWORLD_WEB', 'PACED'];
+
+/** Providers that allow only so many requests per minute. */
+function CT_isPacedProvider_(provider) {
+  return provider === 'TRACKCOURIER' || provider === 'RAJSOLUTIONS';
+}
+
+/** { secret name, how to get it, requests per minute, ask(job, key) } for a paced provider. */
+function CT_pacedProvider_(provider) {
+  if (provider === 'RAJSOLUTIONS') {
+    return { secret: 'CT_RAJSOLUTIONS_API_KEY', label: 'Raj Solutions', perMinute: CT_CONFIG.RAJSOLUTIONS_REQUESTS_PER_MINUTE,
+      ask: function (job, key) { return CT_askRajSolutions_(job.id, key); } };
+  }
+  return { secret: 'CT_TRACKCOURIER_API_KEY', label: 'TrackCourier.io', perMinute: CT_CONFIG.TRACKCOURIER_REQUESTS_PER_MINUTE,
+    ask: CT_askTrackCourier_ };
+}
+
+/**
+ * Ask the paced providers about their jobs, one request per number, in row order, each
+ * provider paced to stay under its own per-minute limit.
+ * Returns { 'COURIERKEY|id': { status, date } | { error } | { deferred } }.
+ * "deferred" means "not asked this time": the run pauses and continues a minute later.
+ */
+function CT_trackPaced_(jobs) {
+  var results = {};
+  var state = {};        // provider → { key, gapMs, lastRequestAt, fatal, fatalFor: { courierKey: msg } }
+  var stopped = false;   // a per-minute limit was hit: ask nothing more this run
+  jobs.forEach(function (job) {
+    var jobKey = job.courierKey + '|' + job.id;
+    var provider = CT_resolveProvider_(job.courierKey);
+    var p = CT_pacedProvider_(provider);
+    var s = state[provider];
+    if (!s) {
+      s = state[provider] = { key: CT_getSecret_(p.secret), lastRequestAt: 0, fatal: '', fatalFor: {},
+        gapMs: Math.ceil(60000 / Math.max(1, p.perMinute || 1)) };
+      if (!s.key) s.fatal = 'No ' + p.label + ' API key saved. Use the menu: Courier Tracking → Set / change API keys.';
+    }
+    // A problem with one provider (bad key, plan used up) or one courier name never stops the others.
+    if (s.fatal) { results[jobKey] = { error: s.fatal }; return; }
+    if (s.fatalFor[job.courierKey]) { results[jobKey] = { error: s.fatalFor[job.courierKey] }; return; }
+    if (stopped || CT_timeIsUp_()) { results[jobKey] = { deferred: true }; return; }
+
+    var wait = s.lastRequestAt + s.gapMs - Date.now();
+    if (wait > 0) Utilities.sleep(wait);
+    s.lastRequestAt = Date.now();
+    try {
+      results[jobKey] = p.ask(job, s.key);
+      if (results[jobKey].deferred) stopped = true; // per-minute limit hit anyway: continue on the next run
+    } catch (e) {
+      if (e.courierOnly) s.fatalFor[job.courierKey] = e.message;
+      else s.fatal = e.message;
+      results[jobKey] = { error: e.message };
+    }
+  });
+  return results;
+}
 
 /** Time after which a run stops asking APIs and pauses (set by CT_runUpdate_). */
 var CT_RUN_DEADLINE_ = 0;
@@ -199,7 +255,7 @@ function CT_timeIsUp_() {
 function CT_trackWithProvider_(provider, jobs) {
   var out = {};
   try {
-    if (provider === 'TRACKCOURIER') return CT_trackWithTrackCourier_(jobs);
+    if (provider === 'PACED') return CT_trackPaced_(jobs);
     var ids = jobs.map(function (j) { return j.id; });
     var byId = provider === 'DELHIVERY' ? CT_trackWithDelhivery_(ids) : CT_trackWithDpWorld_(ids);
     jobs.forEach(function (j) { out[j.courierKey + '|' + j.id] = byId[j.id]; });
@@ -273,7 +329,7 @@ function CT_runUpdate_(options) {
     for (var r = firstRow; r <= lastRow; r += CT_CONFIG.ROWS_PER_BLOCK) {
       if (CT_timeIsUp_()) { pauseAt(r, 'Google time limit'); break; }
       var deferredRow = CT_processBlock_(sheet, r, Math.min(CT_CONFIG.ROWS_PER_BLOCK, lastRow - r + 1), options, log, stats);
-      if (deferredRow) { pauseAt(deferredRow, 'time or TrackCourier.io per-minute limit'); break; }
+      if (deferredRow) { pauseAt(deferredRow, 'time or an API\'s per-minute limit'); break; }
     }
 
     var usage = CT_trackCourierUsage_();
@@ -349,6 +405,7 @@ function CT_processBlock_(sheet, startRow, count, options, log, stats) {
     if (!rowsFor[jobKey]) {
       rowsFor[jobKey] = [];
       var provider = CT_resolveProvider_(key);
+      if (CT_isPacedProvider_(provider)) provider = 'PACED';
       (jobsFor[provider] = jobsFor[provider] || []).push({ courierKey: key, id: id });
     }
     rowsFor[jobKey].push(i);

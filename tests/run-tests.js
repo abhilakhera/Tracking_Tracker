@@ -12,7 +12,7 @@ const ctx = vm.createContext({
   console,
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty() {}, deleteProperty() {} }) },
 });
-for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'Main.gs']) {
+for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Main.gs']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
 }
 const g = (expr) => vm.runInContext(expr, ctx);
@@ -156,6 +156,39 @@ test('planned (not yet happened) events are ignored', () => {
     { event_desc: 'Delivered', event_status: 'planned', event_time: '2026-10-05T10:00:00', event_location: { city: 'Goa' } },
   ]);
   assert.strictEqual(out.main, 'Received');
+});
+
+console.log('Raj Solutions (DP World) response parsing (real replies, customer details removed)');
+const raj = (id) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'rajsolutions-' + id + '.json'), 'utf8'));
+test('delivered docket → "Delivered (place)", delivery time as date; POD paperwork ignored', () => {
+  const out = g('CT_parseRajSolutionsResult_')(raj('1846272584'));
+  assert.strictEqual(out.status, 'Delivered (Ananthpur)');
+  assert.strictEqual(iso(out.date), '2026-09-30T15:33:00.000Z'); // 30-Sep-2026 21:03 IST, same as DP World's own page
+  assert.strictEqual(g('CT_briefStatus_')(out.status), 'Delivered');
+});
+test('return to sender requested', () => {
+  const out = g('CT_parseRajSolutionsResult_')(raj('1846272246'));
+  assert.strictEqual(out.status, 'RTO - Request RTO (Lucknow)');
+  assert.strictEqual(g('CT_briefStatus_')(out.status), 'RTO');
+  assert.strictEqual(iso(out.date), '2026-10-09T07:52:26.000Z');
+});
+test('picked up, on its way', () => {
+  const out = g('CT_parseRajSolutionsResult_')(raj('1846281362'));
+  assert.strictEqual(out.status, 'In Transit - Reached At Pickup Branch (Gurgaon Farukhnagar)');
+});
+test('only booked so far', () => {
+  const out = g('CT_parseRajSolutionsResult_')({ success: true, data: { shipment: { status: 'manifested' },
+    tracking_events: [{ status: 'CREATED', location: '', timestamp: '2026-10-13 15:23:54' }] } });
+  assert.strictEqual(out.status, 'Booked - Created');
+  assert.strictEqual(g('CT_briefStatus_')(out.status), 'Booked');
+  assert.strictEqual(iso(out.date), '2026-10-13T09:53:54.000Z');
+});
+test('replies: unknown docket, bad key, speed limit, server error', () => {
+  const h = g('CT_handleRajSolutionsResponse_');
+  assert.ok(/no shipment with this docket/.test(h(404, '{"success":false,"message":"Shipment not found."}').error));
+  assert.throws(() => h(401, '{"success":false,"message":"Invalid or expired API key."}'), /rejected the API key.*Invalid or expired/);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(h(429, '{}'))), { deferred: true });
+  assert.ok(/HTTP 500: Failed to retrieve tracking information.*retry/.test(h(500, '{"success":false,"message":"Failed to retrieve tracking information."}').error));
 });
 
 console.log('Brief Status (column I)');

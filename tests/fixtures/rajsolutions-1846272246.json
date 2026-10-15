@@ -1,0 +1,157 @@
+{
+ "success": true,
+ "message": "Shipment tracking retrieved successfully",
+ "data": {
+  "shipment": {
+   "lr": "1846272246",
+   "awb": "1846272246",
+   "order_reference_id": "x",
+   "invoice_number": "x",
+   "invoice_value": "x",
+   "weight": 117,
+   "status": "rto",
+   "manifested_at": "2026-09-21 15:56:24",
+   "pickup_at": "2026-09-21 15:56:19",
+   "delivered_at": null,
+   "cancelled_at": null,
+   "expected_at": null
+  },
+  "consignee": {
+   "name": "x",
+   "phone": "x",
+   "address": "x"
+  },
+  "tracking_events": [
+   {
+    "status": "CREATED",
+    "location": "",
+    "timestamp": "2026-09-21 15:56:19"
+   },
+   {
+    "status": "OUT_FOR_PICKUP",
+    "location": "Gurgaon Farukhnagar, Gurgaon, Haryana",
+    "timestamp": "2026-09-23 18:59:30"
+   },
+   {
+    "status": "REACHED_AT_PICKUP_BRANCH",
+    "location": "Gurgaon Farukhnagar, Gurgaon, Haryana",
+    "timestamp": "2026-09-23 18:59:32"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Padheni,Nuh,Faridabad Division,Haryana,India,122102",
+    "timestamp": "2026-09-24 06:20:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Barika Jungle Road,Palwal,Uttar Pradesh,India,281403",
+    "timestamp": "2026-09-24 08:19:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Chennai - Delhi Highway,Kosi Kalan,Mathura,Uttar Pradesh,India,281403",
+    "timestamp": "2026-09-24 08:51:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Chennai - Delhi Highway,Chaudhary Digamber Singh Nagar,Mathura,Mathura,Uttar Pradesh,India,281001",
+    "timestamp": "2026-09-24 09:49:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Manpur - Sauj Road,Nera Bangar,Mathura,Uttar Pradesh,India,281302",
+    "timestamp": "2026-09-24 10:49:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Jasrana, Firozabad, Uttar Pradesh, India",
+    "timestamp": "2026-09-24 12:18:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "National Highway 19,Ukhrend,Agra,Uttar Pradesh,India,283142",
+    "timestamp": "2026-09-24 13:18:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "GGIC Road,Siddharthpuri,Jaswantnagar,Etawah,Uttar Pradesh,India,206245",
+    "timestamp": "2026-09-24 13:50:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Bharthana, Etawah, Uttar Pradesh, 206120, India",
+    "timestamp": "2026-09-24 15:22:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Sikrori Road,Pachdeora,Auraiya,Kanpur Division,Uttar Pradesh,India,206121",
+    "timestamp": "2026-09-24 16:19:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Sikrori Road,Pachdeora,Auraiya,Kanpur Division,Uttar Pradesh,India,206121",
+    "timestamp": "2026-09-24 17:21:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Sikrori Road,Pachdeora,Auraiya,Kanpur Division,Uttar Pradesh,India,206121",
+    "timestamp": "2026-09-24 18:19:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Etawah - Kanpur Road,Mundadeo,Kanpur Dehat,Uttar Pradesh,India,209125",
+    "timestamp": "2026-09-24 20:50:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Kanpur Dehat,Uttar Pradesh,India,209101",
+    "timestamp": "2026-09-24 21:50:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Kanpur Dehat,Uttar Pradesh,India,209101",
+    "timestamp": "2026-09-24 22:53:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Kanpur Dehat,Uttar Pradesh,India,209101",
+    "timestamp": "2026-09-25 00:22:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "\u0631\u0628\u064a\u0639\u0629 \u0628\u0646 \u0639\u0628\u062f\u0627\u0646,Salman Plains,Unnao,Uttar Pradesh,India,209862",
+    "timestamp": "2026-09-25 02:22:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Kanpur Road,Banthra Sikander Pur,Lucknow,Uttar Pradesh,India,226401",
+    "timestamp": "2026-09-25 04:21:00"
+   },
+   {
+    "status": "IN_TRANSIT",
+    "location": "Kuroni,Lucknow,Uttar Pradesh,India,226401",
+    "timestamp": "2026-09-25 05:23:00"
+   },
+   {
+    "status": "REACHED_DELIVERY_BRANCH",
+    "location": "Lucknow, Lucknow, Uttar Pradesh",
+    "timestamp": "2026-09-26 09:01:00"
+   },
+   {
+    "status": "OUT_FOR_DELIVERY",
+    "location": "Lucknow, Lucknow, Uttar Pradesh",
+    "timestamp": "2026-10-06 13:49:30"
+   },
+   {
+    "status": "REACHED_DELIVERY_BRANCH",
+    "location": "Lucknow, Lucknow, Uttar Pradesh",
+    "timestamp": "2026-10-06 21:07:00"
+   },
+   {
+    "status": "REQUEST_RTO",
+    "location": "Lucknow, Lucknow, Uttar Pradesh",
+    "timestamp": "2026-10-09 13:22:26"
+   }
+  ]
+ }
+}

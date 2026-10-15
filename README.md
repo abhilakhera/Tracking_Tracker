@@ -49,7 +49,7 @@ starts with `CT_`, so it sits safely next to the other scripts in your spreadshe
 |---|---|---|
 | Delhivery | TrackCourier.io (your key), or Delhivery directly if you get a free Delhivery token | ✅ Ready |
 | Safexpress | TrackCourier.io (your key) | ✅ Ready |
-| DP World | Tracked by hand for now: DP World's page needs a captcha, and TrackCourier.io's API doesn't offer it | ⏸ Skipped |
+| DP World | Raj Solutions (your Raj Solutions key) | ✅ Ready |
 
 ## How to install it
 
@@ -69,7 +69,8 @@ apps-script/          code to paste into Extensions → Apps Script
   Main.gs             menu, reading/writing the sheet, scheduling
   TrackCourier.gs     TrackCourier.io connector (Safexpress, Delhivery)
   Delhivery.gs        Delhivery's own API (optional, needs a Delhivery token)
-  DPWorld.gs          DP World reader (the data behind DP World's tracking page)
+  RajSolutions.gs     Raj Solutions connector (DP World)
+  DPWorld.gs          DP World website reader (off: the page now needs a captcha)
   Sync.gs             Pre CRM → Order Tracking → Review & Rating Data
   Fsn.gs              FSN → clickable Flipkart link, in every tab
   Import.gs           seller team's tracking spreadsheet → hidden "Raw Order Tracking" tab

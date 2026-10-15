@@ -17,7 +17,11 @@ updated, with the reason.
 | "Courier name not recognised" | Column H has a spelling the robot doesn't know, e.g. "Delhivry" | Fix the spelling in the cell. |
 | "found no shipment with this number" | The courier doesn't know this number | Check the number on the courier's website. Very new parcels may show up only after pickup. |
 | "DP World has no shipment with this docket number" | DP World doesn't know this docket | Check the number on DP World's tracking page. |
-| "DP World website replied HTTP 400: … Captcha Missing" or "TrackCourier.io does not know the courier name "delex-courier"" | Older version. DP World's page now needs a captcha, and TrackCourier.io's API doesn't offer DP World | Update `CT_Config` and `CT_Main`. DP World rows are then skipped (tracked by hand) with no errors. |
+| "DP World website replied HTTP 400: … Captcha Missing" or "TrackCourier.io does not know the courier name "delex-courier"" | Older version. DP World's page now needs a captcha, and TrackCourier.io's API doesn't offer DP World | Update to the version that tracks DP World through Raj Solutions (see SETUP_GUIDE → DP World). |
+| "No Raj Solutions API key saved" | The Raj Solutions key isn't saved yet | **📦 Courier Tracking → Set / change API keys**, third box. |
+| "Raj Solutions rejected the API key" | The key was rotated or disabled in your Raj Solutions account | Copy the current key from Raj Solutions → API Access Control and save it again (third box). Delhivery and Safexpress keep working meanwhile. |
+| "Raj Solutions has no shipment with this docket number" | Raj Solutions doesn't know this docket (typo, or booked elsewhere) | Check the number in column G and on DP World's tracking page. |
+| "Raj Solutions HTTP 500 …" | Raj Solutions' system had a problem | Nothing to do: it's retried on the next run. |
 | "TrackCourier.io does not know the courier name …" | TrackCourier.io renamed or dropped that courier | Send the message from the log tab; the name in `CT_Config` needs changing. Other couriers keep working. |
 | "Paused at row … (Google time limit)" | Very big sheet; Google allows 6 minutes per run | Nothing; it continues by itself a minute later. |
 | Column K shows numbers like 46298 | The column's format was changed | Select column K → **Format → Number → Date**. |

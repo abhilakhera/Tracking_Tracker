@@ -1,0 +1,47 @@
+{
+ "success": true,
+ "message": "Shipment tracking retrieved successfully",
+ "data": {
+  "shipment": {
+   "lr": "1846281362",
+   "awb": "1846281362",
+   "order_reference_id": "x",
+   "invoice_number": "x",
+   "invoice_value": "x",
+   "weight": 114,
+   "status": "in_transit",
+   "manifested_at": "2026-10-11 17:53:16",
+   "pickup_at": "2026-10-11 17:53:14",
+   "delivered_at": null,
+   "cancelled_at": null,
+   "expected_at": null
+  },
+  "consignee": {
+   "name": "x",
+   "phone": "x",
+   "address": "x"
+  },
+  "tracking_events": [
+   {
+    "status": "CREATED",
+    "location": "",
+    "timestamp": "2026-10-11 17:53:14"
+   },
+   {
+    "status": "PICKED",
+    "location": "Gurgaon Farukhnagar, Gurgaon, Haryana",
+    "timestamp": "2026-10-13 17:45:30"
+   },
+   {
+    "status": "OUT_FOR_PICKUP",
+    "location": "Gurgaon Farukhnagar, Gurgaon, Haryana",
+    "timestamp": "2026-10-13 17:46:30"
+   },
+   {
+    "status": "REACHED_AT_PICKUP_BRANCH",
+    "location": "Gurgaon Farukhnagar, Gurgaon, Haryana",
+    "timestamp": "2026-10-13 17:46:32"
+   }
+  ]
+ }
+}
