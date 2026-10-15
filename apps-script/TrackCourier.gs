@@ -1,6 +1,7 @@
 /**
- * TrackCourier.io: one API for many Indian couriers (used here for Safexpress,
- * and for Delhivery when no Delhivery token is saved).
+ * TrackCourier.io: one API for many Indian couriers (used here for Safexpress, for
+ * DP World (listed there by its former name "Delex"), and for Delhivery when no Delhivery
+ * token is saved).
  *
  * Request:  GET https://api.trackcourier.io/v1/track?courier=<slug>&tracking_number=<number>
  *           Header  X-API-Key: <your TrackCourier.io key>
@@ -24,10 +25,12 @@ function CT_trackWithTrackCourier_(jobs) {
   var results = {};
   var stopped = false;
   var fatal = '';        // a problem that affects every number (bad key, plan used up)
+  var fatalFor = {};     // courierKey → a problem with just that courier (name unknown to TrackCourier.io)
   var lastRequestAt = 0;
   jobs.forEach(function (job) {
     var jobKey = job.courierKey + '|' + job.id;
     if (fatal) { results[jobKey] = { error: fatal }; return; }
+    if (fatalFor[job.courierKey]) { results[jobKey] = { error: fatalFor[job.courierKey] }; return; }
     if (stopped || CT_timeIsUp_()) { results[jobKey] = { deferred: true }; return; }
 
     var wait = lastRequestAt + gapMs - Date.now();
@@ -50,8 +53,9 @@ function CT_trackWithTrackCourier_(jobs) {
     try {
       results[jobKey] = CT_handleTrackCourierResponse_(response.getResponseCode(), response.getContentText(), slug);
     } catch (e) {
-      fatal = e.message;
-      results[jobKey] = { error: fatal };
+      if (e.courierOnly) fatalFor[job.courierKey] = e.message;
+      else fatal = e.message;
+      results[jobKey] = { error: e.message };
     }
   });
   return results;
@@ -75,7 +79,9 @@ function CT_handleTrackCourierResponse_(code, body, slug) {
     throw new Error('TrackCourier.io: monthly limit of your plan reached (' + apiMessage + '). Upgrade the plan or wait for next month.');
   }
   if (code === 404 && errCode === 'COURIER_NOT_FOUND') {
-    throw new Error('TrackCourier.io does not know the courier name "' + slug + '". Check trackCourierSlug in CT_Config.');
+    var unknown = new Error('TrackCourier.io does not know the courier name "' + slug + '". Check trackCourierSlug in CT_Config.');
+    unknown.courierOnly = true; // the other couriers carry on
+    throw unknown;
   }
   if (code === 404) return { error: 'TrackCourier.io found no shipment with this number. Check it on the courier\'s website.' };
   if (code === 502 || code === 504) return { error: 'The courier\'s system did not answer in time (' + apiMessage + '). Will retry on the next run.' };

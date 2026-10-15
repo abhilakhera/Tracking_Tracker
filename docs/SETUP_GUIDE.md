@@ -184,7 +184,7 @@ TRACKCOURIER_REQUESTS_PER_MINUTE: 60,
 
 **Step 9.** **📦 Courier Tracking → Test API connections.** You should see:
 - TrackCourier.io: ✅ connected
-- DP World website: ✅ reachable
+- Delhivery → …, Safexpress → TrackCourier.io, DP World → TrackCourier.io
 - Daily update: ON, around 8:00
 - Tab being updated: "Order Tracking"
 
@@ -214,9 +214,9 @@ nobody has the spreadsheet open, and checks **only parcels that aren't delivered
 
 ## How many TrackCourier.io requests will I use?
 
-Checking one Delhivery or Safexpress parcel uses **1 request**. DP World is free.
+Checking one Delhivery, Safexpress or DP World parcel uses **1 request**.
 
-> **Requests per month ≈ undelivered Delhivery + Safexpress parcels × 30**  (one check a day)
+> **Requests per month ≈ undelivered Delhivery + Safexpress + DP World parcels × 30**  (one check a day)
 
 Example: 150 parcels on the way at any time → 150 × 30 = **4,500 requests a month**, which
 fits the Starter plan (5,000). The Courier Tracking Log tab shows your usage after every run.
@@ -231,12 +231,14 @@ fits the Starter plan (5,000). The Courier Tracking Log tab shows your usage aft
 
 ## DP World
 
-DP World needs **nothing from you**: no key, no account, no cost. The robot reads the same
-information that DP World's tracking page (<https://www.logistics.dpworld.com/tracking/in/express>)
-shows when you type a docket number.
+DP World is tracked through **TrackCourier.io**, with your existing key. TrackCourier.io lists
+DP World Express under its former name, **Delex** (`delex-courier`). Each DP World check uses
+1 request, like the other couriers.
 
-This is the data behind DP World's website, not an official service for programs. If DP World
-redesigns their website, DP World rows may stop updating, and the log tab will say so.
+Until October 2026 the robot read DP World's own tracking page for free. DP World then added a
+captcha ("I'm not a robot" check) to that page, which no robot can pass, so every DP World row
+showed *"Captcha Missing"*. If DP World ever removes the captcha, you can go back to the free
+route: in `CT_Config`, set DP World's `provider` to `'DPWORLD_WEB'`.
 
 ---
 

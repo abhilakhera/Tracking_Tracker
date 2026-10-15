@@ -69,7 +69,7 @@ var CT_CONFIG = {
   //   provider - where the status comes from:
   //                'DELHIVERY'    = Delhivery's own API (needs a Delhivery token, free)
   //                'TRACKCOURIER' = TrackCourier.io (needs your TrackCourier.io key)
-  //                'DPWORLD_WEB'  = DP World's own tracking website
+  //                'DPWORLD_WEB'  = DP World's own tracking website (blocked by a captcha since Oct 2026)
   //                'AUTO'         = Delhivery API if a Delhivery token is saved, else TrackCourier.io
   //   trackCourierSlug - TrackCourier.io's name for the courier.
   COURIERS: {
@@ -88,7 +88,11 @@ var CT_CONFIG = {
     DPWORLD: {
       label: 'DP World',
       aliases: ['dpworld', 'dpw', 'delex'],
-      provider: 'DPWORLD_WEB',
+      // DP World's own tracking website now asks for a captcha, so a robot can't read it
+      // ("Captcha Missing"). DP World Express India was formerly Delex Cargo, which
+      // TrackCourier.io tracks under the name 'delex-courier'.
+      provider: 'TRACKCOURIER',
+      trackCourierSlug: 'delex-courier',
     },
   },
 

@@ -127,7 +127,10 @@ function CT_setApiKeys() {
 
 function CT_testConnections() {
   var names = { DELHIVERY: 'Delhivery API', TRACKCOURIER: 'TrackCourier.io', DPWORLD_WEB: 'DP World website' };
-  var lines = [CT_testTrackCourierConnection_(), CT_testDelhiveryConnection_(), CT_testDpWorldConnection_(), ''];
+  var usesDpWorldWeb = Object.keys(CT_CONFIG.COURIERS).some(function (k) { return CT_resolveProvider_(k) === 'DPWORLD_WEB'; });
+  var lines = [CT_testTrackCourierConnection_(), CT_testDelhiveryConnection_()];
+  if (usesDpWorldWeb) lines.push(CT_testDpWorldConnection_());
+  lines.push('');
   Object.keys(CT_CONFIG.COURIERS).forEach(function (key) {
     lines.push(CT_CONFIG.COURIERS[key].label + ' → ' + names[CT_resolveProvider_(key)]);
   });
