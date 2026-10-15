@@ -98,9 +98,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
     row('BNG123', ' bng '),               // tracked by hand → skipped, no error, nothing written
     row('SX9002', 'Safe Express'),
   ], { CT_DELHIVERY_TOKEN: 'DTOKEN', CT_TRACKCOURIER_API_KEY: 'TCKEY' }, (slug, id) => {
-    assert.ok(['safexpress', 'delex-courier'].includes(slug), slug); // DP World = "Delex" on TrackCourier.io
-    if (slug === 'delex-courier') assert.ok(['1846272584', 'DPW777'].includes(id), id);
-    if (id === '1846272584') return delivered('Anantapur');
+    assert.strictEqual(slug, 'safexpress');
     return id === 'SX9001' ? delivered('Chennai') : json(404, { success: false, error: { code: 'TRACKING_NOT_FOUND', message: 'Tracking number not found' } });
   });
   t.run('CT_dailyUpdate');
@@ -109,10 +107,10 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   assert.deepStrictEqual([d[1][I], d[1][J], iso(d[1][K])], ['In Transit', 'In Transit - Bag received (Pune_Hub)', '2026-10-02T18:30:00.000Z']);
   // Safexpress via TrackCourier.io
   assert.deepStrictEqual([d[2][I], d[2][J], iso(d[2][K])], ['Delivered', 'Delivered (Chennai)', '2026-10-01T18:30:00.000Z']);
-  // DP World via TrackCourier.io (its tracking website now needs a captcha)
-  assert.deepStrictEqual([d[3][I], d[3][J], iso(d[3][K])], ['Delivered', 'Delivered (Anantapur)', '2026-10-01T18:30:00.000Z']);
-  // unknown DP World docket → left blank, explained in the log
+  // DP World has no automatic source (its website needs a captcha): skipped like BNG, no error
+  assert.deepStrictEqual([d[3][I], d[3][J], d[3][K]], ['', '', '']);
   assert.deepStrictEqual([d[4][I], d[4][J]], ['', '']);
+  assert.ok(!t.log().some((m) => /^(4|5) /.test(m)), 'no log message for DP World rows');
   // already delivered row untouched
   assert.deepStrictEqual([d[5][I], d[5][J], d[5][K]], ['Delivered', 'Delivered - Waybill Delivered (Asansol)', 'old']);
   // BNG is tracked by hand: skipped, nothing written, no error
@@ -131,11 +129,9 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   assert.ok(!t.writes.some((w) => w.startsWith('Order Tracking!R6C')), 'the delivered row must not be rewritten');
   const msgs = t.log();
   assert.ok(msgs.some((m) => m.startsWith('8 ERROR Courier name not recognised')), msgs.join('\n'));
-  assert.ok(msgs.some((m) => m.startsWith('5 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
   assert.ok(msgs.some((m) => m.startsWith('10 ERROR TrackCourier.io found no shipment')), msgs.join('\n'));
   assert.ok(msgs.some((m) => m.includes('TrackCourier.io: 1,234 of 5,000 requests used this month.')), msgs.join('\n'));
-  assert.ok(!t.calls.some((c) => c.includes('cargoes.com')), 'DP World\'s captcha-protected website is not used');
-  assert.ok(t.calls.some((c) => c.includes('courier=delex-courier&tracking_number=1846272584')), t.calls.join('\n'));
+  assert.ok(!t.calls.some((c) => c.includes('cargoes.com') || c.includes('1846272584')), 'DP World is not sent anywhere');
   assert.ok(!t.calls.some((c) => c.includes('2222222222222')), 'delivered row should not be re-checked');
   // Starter plan = 60 requests/minute → the 2nd TrackCourier request waits ~1 s.
   assert.ok(t.slept() >= 500, 'requests should be paced, slept ' + t.slept() + ' ms');
@@ -275,10 +271,31 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
     { CT_TRACKCOURIER_API_KEY: 'TCKEY' }, (slug) => (slug === 'delex-courier'
       ? json(404, { success: false, error: { code: 'COURIER_NOT_FOUND', message: 'Unknown courier slug' } })
       : delivered('Pune')));
+  vm.runInContext("CT_CONFIG.COURIERS.DPWORLD.provider = 'TRACKCOURIER'; CT_CONFIG.COURIERS.DPWORLD.trackCourierSlug = 'delex-courier';", t.ctx);
   t.run('CT_dailyUpdate');
   assert.strictEqual(t.data[2][I], 'Delivered', 'Safexpress still tracked');
   assert.strictEqual(t.calls.filter((c) => c.includes('delex-courier')).length, 1, 'asked once, then that courier is skipped');
   const msgs = t.log();
   assert.ok(msgs.some((m) => m.startsWith('4 ERROR TrackCourier.io does not know the courier name "delex-courier"')), msgs.join('\n'));
   console.log('Scenario 9 (unknown courier name only stops that courier): OK');
+}
+
+// ── Scenario 10: DP World's website reader still works if switched back on (and explains a captcha) ──
+{
+  const t = setup([row(1846272584, 'DP World'), row('DPW777', 'DPWorld')], {}, () => { throw new Error('no TrackCourier call expected'); });
+  vm.runInContext("CT_CONFIG.COURIERS.DPWORLD.provider = 'DPWORLD_WEB';", t.ctx);
+  t.run('CT_dailyUpdate');
+  assert.deepStrictEqual([t.data[1][I], t.data[1][J], iso(t.data[1][K])], ['Delivered', 'Delivered (Anantapur)', '2026-09-29T18:30:00.000Z']);
+  assert.ok(t.log().some((m) => m.startsWith('3 ERROR DP World has no shipment with this docket')), t.log().join('\n'));
+  assert.strictEqual(t.calls.filter((c) => c.includes('cargoes.com')).length, 1, 'both DP World dockets in one request');
+
+  const c = setup([row('1846272246', 'DP World')], {}, () => { throw new Error('no TrackCourier call expected'); }, {
+    onFetch: () => {},
+  });
+  vm.runInContext("CT_CONFIG.COURIERS.DPWORLD.provider = 'DPWORLD_WEB';" +
+    "UrlFetchApp.fetch = function () { return { getResponseCode: function () { return 400; }, getContentText: function () {" +
+    " return '{\"code\":\"40086\",\"message\":\"Captcha Missing\"}'; } }; };", c.ctx);
+  c.run('CT_dailyUpdate');
+  assert.ok(c.log().some((m) => /^2 ERROR DP World's tracking website now asks for a captcha.*'MANUAL'/.test(m)), c.log().join('\n'));
+  console.log('Scenario 10 (DP World website reader still works when switched back on; captcha explained): OK');
 }

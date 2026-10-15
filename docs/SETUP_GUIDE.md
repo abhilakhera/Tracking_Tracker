@@ -184,7 +184,7 @@ TRACKCOURIER_REQUESTS_PER_MINUTE: 60,
 
 **Step 9.** **📦 Courier Tracking → Test API connections.** You should see:
 - TrackCourier.io: ✅ connected
-- Delhivery → …, Safexpress → TrackCourier.io, DP World → TrackCourier.io
+- Delhivery → …, Safexpress → TrackCourier.io, DP World → tracked by hand (skipped)
 - Daily update: ON, around 8:00
 - Tab being updated: "Order Tracking"
 
@@ -214,9 +214,9 @@ nobody has the spreadsheet open, and checks **only parcels that aren't delivered
 
 ## How many TrackCourier.io requests will I use?
 
-Checking one Delhivery, Safexpress or DP World parcel uses **1 request**.
+Checking one Delhivery or Safexpress parcel uses **1 request**. DP World uses none (see below).
 
-> **Requests per month ≈ undelivered Delhivery + Safexpress + DP World parcels × 30**  (one check a day)
+> **Requests per month ≈ undelivered Delhivery + Safexpress parcels × 30**  (one check a day)
 
 Example: 150 parcels on the way at any time → 150 × 30 = **4,500 requests a month**, which
 fits the Starter plan (5,000). The Courier Tracking Log tab shows your usage after every run.
@@ -231,14 +231,17 @@ fits the Starter plan (5,000). The Courier Tracking Log tab shows your usage aft
 
 ## DP World
 
-DP World is tracked through **TrackCourier.io**, with your existing key. TrackCourier.io lists
-DP World Express under its former name, **Delex** (`delex-courier`). Each DP World check uses
-1 request, like the other couriers.
+Right now there is **no automatic source** for DP World, so DP World rows are **skipped**, like
+BNG: fill in Brief Status, Tracking Status and Status Date by hand.
 
-Until October 2026 the robot read DP World's own tracking page for free. DP World then added a
-captcha ("I'm not a robot" check) to that page, which no robot can pass, so every DP World row
-showed *"Captcha Missing"*. If DP World ever removes the captcha, you can go back to the free
-route: in `CT_Config`, set DP World's `provider` to `'DPWORLD_WEB'`.
+- Until October 2026 the robot read DP World's own tracking page for free. DP World then added a
+  Google reCAPTCHA ("I'm not a robot" check) to it, so every DP World row showed *"Captcha Missing"*.
+- TrackCourier.io's API does not offer DP World / Delex (its website does, but that can't be used
+  by a robot).
+
+If DP World removes the captcha, set DP World's `provider` in `CT_Config` back to `'DPWORLD_WEB'`.
+If DP World gives you an official tracking API (ask your DP World account manager), it can be
+connected.
 
 ---
 

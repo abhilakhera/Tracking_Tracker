@@ -1,7 +1,6 @@
 /**
- * TrackCourier.io: one API for many Indian couriers (used here for Safexpress, for
- * DP World (listed there by its former name "Delex"), and for Delhivery when no Delhivery
- * token is saved).
+ * TrackCourier.io: one API for many Indian couriers (used here for Safexpress,
+ * and for Delhivery when no Delhivery token is saved).
  *
  * Request:  GET https://api.trackcourier.io/v1/track?courier=<slug>&tracking_number=<number>
  *           Header  X-API-Key: <your TrackCourier.io key>

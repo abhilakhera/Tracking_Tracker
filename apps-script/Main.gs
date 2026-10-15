@@ -126,7 +126,8 @@ function CT_setApiKeys() {
 }
 
 function CT_testConnections() {
-  var names = { DELHIVERY: 'Delhivery API', TRACKCOURIER: 'TrackCourier.io', DPWORLD_WEB: 'DP World website' };
+  var names = { DELHIVERY: 'Delhivery API', TRACKCOURIER: 'TrackCourier.io', DPWORLD_WEB: 'DP World website',
+    MANUAL: 'tracked by hand (skipped)' };
   var usesDpWorldWeb = Object.keys(CT_CONFIG.COURIERS).some(function (k) { return CT_resolveProvider_(k) === 'DPWORLD_WEB'; });
   var lines = [CT_testTrackCourierConnection_(), CT_testDelhiveryConnection_()];
   if (usesDpWorldWeb) lines.push(CT_testDpWorldConnection_());
@@ -172,7 +173,7 @@ function CT_deleteTriggers_(handlerName) {
 
 // ─── The update itself ──────────────────────────────────────────────────────
 
-/** Where a courier's numbers are tracked: 'DELHIVERY', 'TRACKCOURIER' or 'DPWORLD_WEB'. */
+/** Where a courier's numbers are tracked: 'DELHIVERY', 'TRACKCOURIER', 'DPWORLD_WEB' or 'MANUAL'. */
 function CT_resolveProvider_(courierKey) {
   var p = CT_CONFIG.COURIERS[courierKey].provider;
   if (p === 'AUTO') return CT_getSecret_('CT_DELHIVERY_TOKEN') ? 'DELHIVERY' : 'TRACKCOURIER';
@@ -343,6 +344,7 @@ function CT_processBlock_(sheet, startRow, count, options, log, stats) {
         : 'Courier Partner (column ' + C.COURIER + ') is empty.');
       return;
     }
+    if (CT_resolveProvider_(key) === 'MANUAL') { stats.skipped++; return; } // no automatic source (e.g. DP World)
     var jobKey = key + '|' + id;
     if (!rowsFor[jobKey]) {
       rowsFor[jobKey] = [];

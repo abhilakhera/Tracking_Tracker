@@ -42,7 +42,7 @@ function CT_trackWithDpWorld_(ids) {
     try { json = JSON.parse(body); } catch (e) { /* handled below */ }
     if (/captcha/i.test(body)) {
       throw new Error('DP World\'s tracking website now asks for a captcha, so it can\'t be read by a robot. ' +
-        'In CT_Config, set DP World\'s provider to \'TRACKCOURIER\' (trackCourierSlug \'delex-courier\').');
+        'In CT_Config, set DP World\'s provider to \'MANUAL\' to stop these errors.');
     }
     if (code !== 200 || !json || !json.data) {
       batch.forEach(function (id) {

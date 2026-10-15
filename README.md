@@ -49,7 +49,7 @@ starts with `CT_`, so it sits safely next to the other scripts in your spreadshe
 |---|---|---|
 | Delhivery | TrackCourier.io (your key), or Delhivery directly if you get a free Delhivery token | ✅ Ready |
 | Safexpress | TrackCourier.io (your key) | ✅ Ready |
-| DP World | TrackCourier.io (your key; listed there as "Delex"). DP World's own page now needs a captcha | ✅ Ready |
+| DP World | Tracked by hand for now: DP World's page needs a captcha, and TrackCourier.io's API doesn't offer it | ⏸ Skipped |
 
 ## How to install it
 

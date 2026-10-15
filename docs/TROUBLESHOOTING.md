@@ -17,8 +17,8 @@ updated, with the reason.
 | "Courier name not recognised" | Column H has a spelling the robot doesn't know, e.g. "Delhivry" | Fix the spelling in the cell. |
 | "found no shipment with this number" | The courier doesn't know this number | Check the number on the courier's website. Very new parcels may show up only after pickup. |
 | "DP World has no shipment with this docket number" | DP World doesn't know this docket | Check the number on DP World's tracking page. |
-| "DP World website replied HTTP 400: … Captcha Missing" | Older version: DP World's tracking page now asks for a captcha | Update `CT_Config`, `CT_TrackCourier`, `CT_DPWorld` and `CT_Main`. DP World is then tracked through TrackCourier.io. |
-| "TrackCourier.io does not know the courier name "delex-courier"" | TrackCourier.io renamed or dropped DP World / Delex | Send the message from the log tab; the name in `CT_Config` needs changing. Other couriers keep working. |
+| "DP World website replied HTTP 400: … Captcha Missing" or "TrackCourier.io does not know the courier name "delex-courier"" | Older version. DP World's page now needs a captcha, and TrackCourier.io's API doesn't offer DP World | Update `CT_Config` and `CT_Main`. DP World rows are then skipped (tracked by hand) with no errors. |
+| "TrackCourier.io does not know the courier name …" | TrackCourier.io renamed or dropped that courier | Send the message from the log tab; the name in `CT_Config` needs changing. Other couriers keep working. |
 | "Paused at row … (Google time limit)" | Very big sheet; Google allows 6 minutes per run | Nothing; it continues by itself a minute later. |
 | Column K shows numbers like 46298 | The column's format was changed | Select column K → **Format → Number → Date**. |
 | Dates are one day off | Your sheet isn't set to Indian time | **File → Settings → Time zone → (GMT+05:30) India Standard Time**. |
