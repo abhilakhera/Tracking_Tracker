@@ -166,12 +166,13 @@ scenario('Delivered + 2 days → Review & Rating Data; Self Ship orders kept out
 });
 
 // ── 3. When the sync runs ──
-scenario('edits: Self Ship → right away, Pre CRM → one sync a minute later, other tabs → nothing', () => {
+scenario('edits: Self Ship and Pre CRM Remarks → right away, other Pre CRM edits → one sync a minute later, other tabs → nothing', () => {
   const t = load({
     'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'One', phone: 1, remark: 'Dispatch', by: '' })],
     'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER], 'Raw p&l sheet': [['x']],
   });
-  const edit = (tab) => t.run(`CT_onEdit({ range: { getSheet: () => ({ getName: () => ${JSON.stringify(tab)} }) } })`);
+  // An edit of row 2, column A (not the Remarks column).
+  const edit = (tab) => t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName(${JSON.stringify(tab)}).getRange(2, 1) })`);
   edit('Raw p&l sheet');
   assert.strictEqual(t.tab('Order Tracking').length, 1);
   assert.strictEqual(t.triggers.length, 0);
@@ -363,18 +364,21 @@ scenario('orders already in Order Tracking that become "Do Not Dispatch" are rem
   assert.deepStrictEqual(t.tab('Order Tracking').slice(1).map((x) => x[0]), ['OD1', 'OD4']);
 });
 
-scenario('no rows are removed while the tracking update is running (done on the next sync)', () => {
+scenario('while the tracking update writes, rows stay and a sync is retried in a minute; while it is paused, they go and its bookmark moves', () => {
   const t = load({
     'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '1', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Do Not Dispatch', by: '' })],
     'Order Tracking': [OT_HEADER.concat(['Order Item Id']), ['OD1', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '1']],
     'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
   });
-  t.props.CT_RESUME_ROW = '5';
+  t.props.CT_RUNNING_SINCE = String(Date.now());
   t.run('CT_syncNow()');
   assert.strictEqual(t.tab('Order Tracking')[1][0], 'OD1');
-  delete t.props.CT_RESUME_ROW;
-  t.run('CT_syncNow()');
+  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['CT_delayedSync']);
+  delete t.props.CT_RUNNING_SINCE;
+  t.props.CT_RESUME_ROW = '5';
+  t.run('CT_delayedSync()');
   assert.strictEqual(t.tab('Order Tracking').length, 1);
+  assert.strictEqual(t.props.CT_RESUME_ROW, '4', 'bookmark moved up by the one removed row');
 });
 
 // ── 12. Duplicates ──
@@ -531,6 +535,56 @@ scenario('empty rows inside Order Tracking are removed (or refilled if their hid
   const log = t.log();
   assert.strictEqual(log.filter((m) => m.includes('Removed: empty row')).length, 2, log.join('\n'));
   assert.strictEqual(t.ss.getSheetByName('Removed Orders'), null, 'empty rows are not copied to "Removed Orders"');
+});
+
+scenario('Remark changed from "Dispatch" in Pre CRM → its Order Tracking row goes right away, even during a tracking run', () => {
+  const P = (n, remark) => pre({ sku: 'S' + n, fsn: 'F' + n, order: 'OD' + n, item: String(n), on: ist(2026, 9, 21), name: 'N' + n, phone: n, remark, by: '' });
+  const t = load({
+    'Pre CRM': [PRE_HEADER, P(1, 'Dispatch'), P(2, 'Ready to Dispatch'), P(3, 'Dispatch'), P(4, 'Dispatch')],
+    'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  const ot = () => t.tab('Order Tracking').slice(1).filter((r) => r[0]).map((r) => r[0]);
+  assert.deepStrictEqual(ot(), ['OD1', 'OD2', 'OD3', 'OD4']);
+  t.tab('Order Tracking')[2][6] = '1846272584'; t.tab('Order Tracking')[2][7] = 'DP World'; // OD2 has tracking details
+  const remark = (row, text) => {
+    t.tab('Pre CRM')[row - 1][16] = text;
+    t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Pre CRM').getRange(${row}, 17) })`);
+  };
+
+  // 1. Remark changed → removed at once (no waiting), tracking details saved in "Removed Orders".
+  remark(3, 'Hold - customer not reachable');
+  assert.ok(!ot().includes('OD2'), 'OD2 removed straight away: ' + ot().join(','));
+  assert.strictEqual(t.triggers.length, 0, 'no waiting for a delayed sync');
+  const removed = t.tab('Removed Orders');
+  assert.strictEqual(removed[1][2], 'OD2');
+  assert.ok(/remark is now "Hold - customer not reachable"/.test(removed[1][1]), removed[1][1]);
+  assert.strictEqual(removed[1][2 + 6], '1846272584', 'its Tracking ID is kept in "Removed Orders"');
+
+  // 2. The tracking update is paused between continuations (bookmark at row 4 = OD4): removal still
+  //    happens, and the bookmark moves up so OD4 is not skipped.
+  assert.deepStrictEqual(ot(), ['OD1', 'OD3', 'OD4']);
+  t.props.CT_RESUME_ROW = '4';
+  remark(2, 'Cancelled');
+  assert.deepStrictEqual(ot(), ['OD3', 'OD4']);
+  assert.strictEqual(t.props.CT_RESUME_ROW, '3', 'still points at OD4');
+  assert.strictEqual(t.tab('Order Tracking')[2][0], 'OD4');
+  delete t.props.CT_RESUME_ROW;
+
+  // 3. The tracking update is writing right now: the row stays for now and a sync is retried in a minute.
+  t.props.CT_RUNNING_SINCE = String(Date.now());
+  remark(4, 'RTO'); // Pre CRM row 4 = OD3
+  assert.deepStrictEqual(ot(), ['OD3', 'OD4'], 'left alone while tracking writes');
+  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['CT_delayedSync']);
+  delete t.props.CT_RUNNING_SINCE;
+  t.run('CT_delayedSync()');
+  assert.deepStrictEqual(ot(), ['OD4'], 'removed a minute later');
+
+  // 4. Changing back to "Dispatch" brings the order back at once; "Do Not Dispatch" removes.
+  remark(4, 'Dispatch');
+  assert.deepStrictEqual(ot().sort(), ['OD3', 'OD4']);
+  remark(5, 'Do Not Dispatch'); // Pre CRM row 5 = OD4
+  assert.deepStrictEqual(ot(), ['OD3']);
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);

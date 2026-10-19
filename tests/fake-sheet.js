@@ -40,6 +40,7 @@ function makeSheet(name, rows, ss, writes) {
         getNumRows: () => nr,
         getNumColumns: () => nc,
         getLastRow: () => r + nr - 1,
+        getLastColumn: () => c + nc - 1,
         getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (isFormula(get(r + i, c + j)) ? result(get(r + i, c + j)) : get(r + i, c + j) ?? ''))),
         getDisplayValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => shown(get(r + i, c + j)))),
         // A string starting with "=" is treated as a formula that shows nothing.

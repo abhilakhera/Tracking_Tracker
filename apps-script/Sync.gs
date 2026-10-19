@@ -54,8 +54,20 @@ function CT_onEdit(e) {
     // Self Ship cases must leave Review & Rating Data straight away.
     if (!CT_runSync_({})) CT_scheduleSync_();
   } else if (name === CT_SYNC.PRE_CRM.SHEET) {
-    CT_scheduleSync_();
+    // A changed Remark ("Dispatch" ↔ anything else) is applied to Order Tracking straight away;
+    // other Pre CRM edits are collected and synced about a minute later.
+    if (CT_editTouchesColumn_(e.range, CT_SYNC.PRE_CRM.REMARKS)) {
+      if (!CT_runSync_({})) CT_scheduleSync_();
+    } else {
+      CT_scheduleSync_();
+    }
   }
+}
+
+/** True if the edited range includes the given column letter. */
+function CT_editTouchesColumn_(range, letter) {
+  var col = CT_columnNumber_(letter);
+  return range.getColumn() <= col && col <= range.getLastColumn();
 }
 
 function CT_scheduleSync_() {
@@ -474,8 +486,10 @@ function CT_fillTrackingFromRaw_(ss, t, desired, log) {
 function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   var O = CT_SYNC.ORDER_TRACKING;
   var props = PropertiesService.getScriptProperties();
-  var trackingBusy = (Number(props.getProperty('CT_RUNNING_SINCE')) || 0) > Date.now() - 10 * 60 * 1000 ||
-    props.getProperty('CT_RESUME_ROW');
+  // Only while the tracking update is actually writing (a few minutes at most) are rows left
+  // alone. While it is paused between its automatic continuations, rows are removed and its
+  // "continue from row …" bookmark is moved up to match.
+  var trackingBusy = (Number(props.getProperty('CT_RUNNING_SINCE')) || 0) > Date.now() - 10 * 60 * 1000;
   var hasTypedData = function (i) {
     return !!(t.text(i, CT_CONFIG.COLUMNS.TRACKING_ID) || t.text(i, CT_CONFIG.COLUMNS.COURIER) ||
       (t.text(i, O.REMARKS) && !t.formula(i, O.REMARKS)));
@@ -549,10 +563,13 @@ function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
   if (!indexes.length) return false;
   if (trackingBusy) {
     indexes.forEach(function (i) {
-      log.add(where(i), t.text(i, O.ORDER_ID), 'INFO', remove[i].replace('Removed:', 'Will be removed on the next sync (the tracking update is running right now):'));
+      log.add(where(i), t.text(i, O.ORDER_ID), 'INFO', remove[i].replace('Removed:', 'Will be removed in about a minute (the tracking update is writing right now):'));
     });
+    CT_scheduleSync_();
     return false;
   }
+  var resumeRow = Number(props.getProperty('CT_RESUME_ROW')) || 0;
+  var removedAbove = 0;
   var lastCol = Math.max(sheet.getLastColumn(), CT_columnNumber_(O.ORDER_ITEM_ID));
   var archived = [];
   var removedCount = 0;
@@ -566,10 +583,15 @@ function CT_cleanUpOrderTracking_(sheet, t, pre, log) {
     if (!emptyRows[i]) archived.push([new Date(), remove[i]].concat(range.getValues()[0]));
     sheet.deleteRow(row);
     removedCount++;
+    if (resumeRow && row < resumeRow) removedAbove++;
     log.add(CT_CONFIG.SHEET_NAME + ' row ' + row, t.text(i, O.ORDER_ID), 'INFO',
       remove[i] + (hasTypedData(i) ? ' Its Tracking ID / Courier / Remark were saved in the "' + CT_SYNC.REMOVED_SHEET_NAME + '" tab.' : ''));
   });
   CT_archiveRemovedRows_(sheet, archived.reverse(), lastCol);
+  // The paused tracking update continues from the same parcel, now that many rows higher up.
+  if (removedAbove && Number(props.getProperty('CT_RESUME_ROW')) === resumeRow) {
+    props.setProperty('CT_RESUME_ROW', String(Math.max(CT_CONFIG.HEADER_ROWS + 1, resumeRow - removedAbove)));
+  }
   return removedCount > 0;
 }
 

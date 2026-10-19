@@ -34,6 +34,8 @@ changes the **Order Tracking** tab, and it only ever touches its own automatic t
 - Order Tracking **mirrors Pre CRM**: an order is there only while Pre CRM lists it as a
   "Dispatch" order (as many times as Pre CRM lists it). Rows of orders that no longer qualify
   (remark changed, deleted from Pre CRM) and extra duplicate copies are removed automatically.
+  When you **change a Remark** in Pre CRM (e.g. "Dispatch" → "Hold"), its Order Tracking row is
+  removed **straight away**; changing it back to "Dispatch" brings the row back straight away.
   Every removed row is first copied, complete, to the **Removed Orders** tab, so nothing you
   typed is lost.
 - Columns G, H and M are **never** changed by the robot.

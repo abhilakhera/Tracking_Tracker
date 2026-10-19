@@ -40,7 +40,8 @@ updated, with the reason.
 | "This product is also on Pre CRM row …" | Pre CRM has the same product twice | Order Tracking then gets a row for each. If that's a mistake, delete the extra row in Pre CRM; the extra Order Tracking row is removed on the next sync (unless you typed a Tracking ID in it). |
 | FSNs in Order Tracking / Review & Rating Data aren't clickable | A sheet's `onEdit` script only reacts to edits made by a person, never to values written by a script | The sync writes FSNs as Flipkart links itself (`FSN_AS_LINK: true` in `CT_Config`). Update `CT_Sync` and `CT_Config`, then **Sync orders now**. |
 | A delivered order isn't in Review & Rating Data yet | It appears 2 days after its Status Date | Wait; or check it isn't in Self Ship Cases. |
-| Changes in Pre CRM don't show up | The sync runs about a minute after an edit, and every hour | Wait a minute, or **📦 Courier Tracking → Sync orders now**. |
+| Changes in Pre CRM don't show up | A changed **Remark** is applied right away; other Pre CRM edits about a minute later; and everything every hour | Wait a minute, or **📦 Courier Tracking → Sync orders now**. |
+| "Will be removed in about a minute (the tracking update is writing right now)" | You changed a Remark while the tracking update was writing statuses | Nothing to do: the row is removed on the retry a minute later. |
 
 ## Small changes you can make in `CT_Config`
 
