@@ -59,6 +59,7 @@ function CT_onOpen() {
     .addItem('Move orders up to the top of Order Tracking', 'CT_moveOrdersToTop')
     .addItem('Make all FSNs clickable (all tabs)', 'CT_linkAllFsns')
     .addItem('Import tracking data now (seller team sheet → Raw Order Tracking)', 'CT_importTrackingNow')
+    .addItem('Fill Self Ship row(s) from Pre CRM (selected rows)', 'CT_fillSelfShipSelected')
     .addSeparator()
     .addItem('Update all tracking statuses now', 'CT_updateAllNow')
     .addItem('Update selected rows only', 'CT_updateSelectedRows')

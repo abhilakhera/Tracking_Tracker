@@ -30,6 +30,7 @@ function makeSheet(name, rows, ss, writes) {
     getLastColumn: () => data.reduce((m, row) => Math.max(m, (row || []).reduce((k, v, i) => (v !== '' && v !== undefined && v !== null ? i + 1 : k), 0)), 0),
     insertRowsAfter() {},
     hidden: false,
+    notes: {},
     hideSheet() { sheet.hidden = true; },
     deleteRow(r) { data.splice(r - 1, 1); writes.push(`${name}!delete R${r}`); },
     getRange(r, c, nr = 1, nc = 1) {
@@ -55,6 +56,8 @@ function makeSheet(name, rows, ss, writes) {
         setValue(x) { ensure(r); data[r - 1][c - 1] = x; writes.push(`${name}!R${r}C${c}`); return this; },
         setNumberFormat(f) { formats[`${r},${c}`] = f; return this; },
         setFontWeight() { return this; },
+        getNote: () => sheet.notes[`${r},${c}`] || '',
+        setNote(n) { if (n) sheet.notes[`${r},${c}`] = n; else delete sheet.notes[`${r},${c}`]; return this; },
       };
     },
     clearContents() { data.length = 0; },

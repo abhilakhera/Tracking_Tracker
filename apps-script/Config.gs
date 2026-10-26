@@ -133,7 +133,7 @@ var CT_SYNC = {
     SHEET: 'Pre CRM',
     HEADER_ROWS: 1,
     SKU: 'A', FSN: 'B', CATEGORY: 'D', ORDER_ID: 'E', ORDER_ITEM_ID: 'F', ORDERED_ON: 'G',
-    NAME: 'J', PHONE: 'N', REMARKS: 'Q', DELIVERY_BY: 'S',
+    NAME: 'J', CITY: 'K', PIN: 'M', PHONE: 'N', REMARKS: 'Q', DELIVERY_BY: 'S',
   },
 
   // Which Pre CRM rows go to Order Tracking: ordered on or after this date
@@ -150,11 +150,17 @@ var CT_SYNC = {
     DELIVERY_BY: 'L', RETURN_TYPE: 'N', REFUND_STATUS: 'O', ORDER_ITEM_ID: 'P', REMARKS: 'M',
   },
 
-  // Self Ship Cases (filled in by you).
+  // Self Ship Cases (filled in by you). When you type or paste an Order ID in column C, the
+  // robot fills SKU, FSN, Order Item ID, Customer Name, Phone Number, City and Pin code from
+  // Pre CRM (AUTO_FILL: Self Ship column → Pre CRM column). If Pre CRM has more than one
+  // product row for that order, a pop-up asks which one.
+  // ELIGIBLE: "Eligible for Review". An order in Self Ship Cases goes to Review & Rating Data
+  // only when this says "Yes" (on every Self Ship row of that order), and then by the usual rule.
   SELF_SHIP: {
     SHEET: 'Self Ship Cases',
     HEADER_ROWS: 1,
-    ORDER_ID: 'C', ORDER_ITEM_ID: 'D', REQUEST_TYPE: 'K', REFUND_STATUS: 'S',
+    ORDER_ID: 'C', ORDER_ITEM_ID: 'D', REQUEST_TYPE: 'K', REFUND_STATUS: 'S', ELIGIBLE: 'W',
+    AUTO_FILL: { A: 'SKU', B: 'FSN', D: 'ORDER_ITEM_ID', E: 'NAME', F: 'PHONE', G: 'CITY', H: 'PIN' },
   },
 
   // Review & Rating Data. The robot fills A-G and M; H-L are your team's and are never changed.

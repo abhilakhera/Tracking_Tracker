@@ -8,7 +8,7 @@ const vm = require('vm');
 const assert = require('assert');
 const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'SelfShipFill.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
 
 function load(sourceTabs, ourTabs, opts = {}) {
   const source = makeSpreadsheet(sourceTabs);

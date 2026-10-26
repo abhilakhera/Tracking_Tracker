@@ -51,7 +51,11 @@ function CT_onEdit(e) {
   }
   var name = e.range.getSheet().getName();
   if (name === CT_SYNC.SELF_SHIP.SHEET) {
-    // Self Ship cases must leave Review & Rating Data straight away.
+    // An Order ID typed or pasted in column C: fill SKU, FSN, Order Item ID, name, phone, city, PIN from Pre CRM.
+    if (CT_editTouchesColumn_(e.range, CT_SYNC.SELF_SHIP.ORDER_ID)) {
+      try { CT_selfShipOrderEdited_(e.range); } catch (err) { console.error('Self Ship fill: ' + err.message); }
+    }
+    // Self Ship cases (and "Eligible for Review") apply to Review & Rating Data straight away.
     if (!CT_runSync_({})) CT_scheduleSync_();
   } else if (name === CT_SYNC.PRE_CRM.SHEET) {
     // A changed Remark ("Dispatch" ↔ anything else) is applied to Order Tracking straight away;
@@ -286,14 +290,17 @@ function CT_readPreCrm_(ss, tz, log) {
 function CT_readSelfShip_(ss, pre) {
   var C = CT_SYNC.SELF_SHIP;
   var sheet = CT_requireSheet_(ss, C.SHEET);
-  var t = CT_readTable_(sheet, C.HEADER_ROWS, [C.ORDER_ID, C.ORDER_ITEM_ID, C.REQUEST_TYPE, C.REFUND_STATUS]);
-  var out = { byItem: {}, byOrder: {}, orders: {} };
+  var t = CT_readTable_(sheet, C.HEADER_ROWS, [C.ORDER_ID, C.ORDER_ITEM_ID, C.REQUEST_TYPE, C.REFUND_STATUS, C.ELIGIBLE]);
+  // orders: every order in Self Ship Cases. noReview: those kept out of Review & Rating Data
+  // (any of the order's Self Ship rows doesn't say "Yes" under "Eligible for Review").
+  var out = { byItem: {}, byOrder: {}, orders: {}, noReview: {} };
   for (var i = 0; i < t.count; i++) {
     var orderId = t.text(i, C.ORDER_ID);
     if (!orderId) continue;
     var info = { requestType: t.value(i, C.REQUEST_TYPE), refundStatus: t.value(i, C.REFUND_STATUS) };
     var itemId = t.text(i, C.ORDER_ITEM_ID);
     out.orders[orderId] = true;
+    if (t.text(i, C.ELIGIBLE).toLowerCase() !== 'yes') out.noReview[orderId] = true;
     // A later row for the same case wins.
     if (itemId && pre.byKey[itemId]) out.byItem[itemId] = info;
     else out.byOrder[orderId] = info;
@@ -626,11 +633,12 @@ function CT_syncReviews_(ss, tz, pre, selfShip, log) {
     R.DELIVERY_DATE, R.ORDER_ITEM_ID]);
   var today = CT_dayNumber_(new Date(), tz);
 
-  // 1. Remove orders that are in Self Ship Cases (bottom-up so row numbers stay right).
+  // 1. Remove orders that are in Self Ship Cases without "Yes" under "Eligible for Review"
+  //    (bottom-up so row numbers stay right).
   var removeRows = [];
   for (var i = 0; i < rv.count; i++) {
     var oid = rv.text(i, R.ORDER_ID);
-    if (oid && selfShip.orders[oid]) removeRows.push(i);
+    if (oid && selfShip.noReview[oid]) removeRows.push(i);
   }
   removeRows.reverse().forEach(function (idx) {
     var row = rv.firstRow + idx;
@@ -638,7 +646,8 @@ function CT_syncReviews_(ss, tz, pre, selfShip, log) {
     if (CT_cellText_(sheet.getRange(row, CT_columnNumber_(R.ORDER_ID)).getDisplayValue()) !== rv.text(idx, R.ORDER_ID)) return;
     sheet.deleteRow(row);
     stats.removed++;
-    log.add(R.SHEET, rv.text(idx, R.ORDER_ID), 'INFO', 'Removed from ' + R.SHEET + ': the order is in ' + CT_SYNC.SELF_SHIP.SHEET + '.');
+    log.add(R.SHEET, rv.text(idx, R.ORDER_ID), 'INFO', 'Removed from ' + R.SHEET + ': the order is in ' + CT_SYNC.SELF_SHIP.SHEET +
+      ' and "Eligible for Review" there is not "Yes".');
   });
   if (removeRows.length) {
     rv = CT_readTable_(sheet, R.HEADER_ROWS, [R.ORDER_ID, R.ORDER_DATE, R.FSN, R.CATEGORY, R.NAME, R.PHONE,
@@ -660,7 +669,7 @@ function CT_syncReviews_(ss, tz, pre, selfShip, log) {
   var next = rv.count;
   for (var x = 0; x < tr.count; x++) {
     var orderId = tr.text(x, O.ORDER_ID);
-    if (!orderId || selfShip.orders[orderId]) continue;
+    if (!orderId || selfShip.noReview[orderId]) continue;
     if (String(tr.value(x, CT_CONFIG.COLUMNS.BRIEF_STATUS)).trim().toLowerCase() !== 'delivered') continue;
     var delivered = CT_cellDate_(tr.value(x, CT_CONFIG.COLUMNS.STATUS_DATE));
     if (!delivered) continue;

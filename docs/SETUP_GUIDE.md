@@ -41,9 +41,19 @@ changes the **Order Tracking** tab, and it only ever touches its own automatic t
 - Columns G, H and M are **never** changed by the robot.
 
 **Review & Rating Data**: a product is added **2 days after its Status Date** once its Brief Status
-is **Delivered**, unless the order is in **Self Ship Cases**. If an order later appears in Self
-Ship Cases, it is **removed** from Review & Rating Data straight away. The robot fills A–G
-(and M, Order Item Id); your team's columns **H–L are never touched**.
+is **Delivered**. Orders in **Self Ship Cases** are added only if **"Eligible for Review"** (column W)
+says **Yes** (then by the same 2-day rule); with **No** or empty they are kept out, and if they are
+already there they are **removed** straight away. Changing No → Yes brings them in at once (when
+delivered 2+ days ago). The robot fills A–G (and M, Order Item Id); your team's columns **H–L are
+never touched**.
+
+**Self Ship Cases**: type or paste an **Order ID in column C** and press Enter. The robot fills
+**SKU (A), FSN (B), Order Item ID (D), Customer Name (E), Phone Number (F), City (G) and Pin code (H)**
+from Pre CRM. If Pre CRM has **more than one row** for that order (several products, or the same
+product listed twice), a **pop-up** asks which row to use. Your other columns are never touched.
+- Order ID not in Pre CRM: a note on the cell says so, and nothing is filled.
+- If the pop-up doesn't appear (for example for a teammate, or after Cancel), select the row and use
+  **📦 Courier Tracking → Fill Self Ship row(s) from Pre CRM**. The same menu item refills rows any time.
 
 **When it runs:**
 - Courier tracking: every morning between 8:00 and 8:30.

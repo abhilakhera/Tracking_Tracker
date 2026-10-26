@@ -8,7 +8,7 @@ const vm = require('vm');
 const assert = require('assert');
 const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'SelfShipFill.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
 const DAY = 86400000;
 const ist = (y, m, d) => new Date(Date.UTC(y, m - 1, d) - 330 * 60000); // a date cell (midnight IST)
 const daysAgo = (n) => { const t = new Date(Date.now() + 330 * 60000 - n * DAY); return ist(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); };
@@ -33,10 +33,13 @@ function load(tabs, extra = {}) {
   const ss = makeSpreadsheet(tabs);
   const triggers = [];
   const props = {};
+  const dialogs = [];
   const locks = makeLockService();
   const ctx = vm.createContext({
     console: { log() {}, error: console.error },
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss, getUi: () => ({ alert() {} }) },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ss, getActiveRange: () => extra.activeRange && extra.activeRange(ss),
+      getUi: () => ({ alert(m) { dialogs.push({ alert: m }); }, showModalDialog(h, title) { if (extra.noUi) throw new Error('Cannot call SpreadsheetApp.getUi() from this context.'); dialogs.push({ title, html: h.html }); } }) },
+    HtmlService: { createHtmlOutput: (html) => ({ html, setWidth() { return this; }, setHeight() { return this; } }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
     LockService: locks.service,
     ScriptApp: makeScriptApp(triggers),
@@ -45,7 +48,7 @@ function load(tabs, extra = {}) {
   });
   for (const f of FILES) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'apps-script', f), 'utf8'), ctx, { filename: f });
   return {
-    ss, ctx, triggers, props, locks,
+    ss, ctx, triggers, props, locks, dialogs,
     run: (code) => vm.runInContext(code, ctx),
     tab: (n) => ss.getSheetByName(n).data,
     log: () => ss.getSheetByName('Order Sync Log').data.slice(1).map((r) => `${r[1]} | ${r[2]} | ${r[3]} | ${r[4]}`),
@@ -152,7 +155,7 @@ scenario('Delivered + 2 days → Review & Rating Data; Self Ship orders kept out
 
   // Later, OD1 becomes a Self Ship case → removed straight away (via the edit trigger); other rows keep their notes.
   t.tab('Self Ship Cases').push(ss_('OD1', '1', 'Replacement', 'Not required'));
-  t.run(`CT_onEdit({ range: { getSheet: () => ({ getName: () => 'Self Ship Cases' }) } })`);
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(2, 11) })`);
   rv = t.tab('Review & Rating Data');
   assert.deepStrictEqual(rv.slice(1).map((r) => r[0]), ['OD9', 'OD2']);
   assert.deepStrictEqual(rv[1].slice(7, 12), ['called', 'link', 'msg', 'Done', 'team note']);
@@ -585,6 +588,123 @@ scenario('Remark changed from "Dispatch" in Pre CRM → its Order Tracking row g
   assert.deepStrictEqual(ot().sort(), ['OD3', 'OD4']);
   remark(5, 'Do Not Dispatch'); // Pre CRM row 5 = OD4
   assert.deepStrictEqual(ot(), ['OD3']);
+});
+
+// ── Self Ship Cases: "Eligible for Review" and filling a row from Pre CRM ──
+const SS_FULL_HEADER = SS_HEADER.concat(['Refund Amount', 'Refund Initiation Date', 'Case Status', 'Eligible for Review']);
+const ssW = (order, item, eligible) => ss_(order, item, 'Customer Return', 'Pending').concat(['', '', '', eligible]);
+
+scenario('Self Ship order with "Yes" under "Eligible for Review" goes to Review & Rating Data by the usual rule; "No" keeps it out', () => {
+  const ot = (order, item, brief, when) => [order, '', '', 'F' + item, '', '', 'T' + item, 'Delhivery', brief, brief, when, '', '', '', '', item];
+  const P = (n) => pre({ sku: 'S' + n, fsn: 'F' + n, order: 'OD' + n, item: String(n), on: ist(2026, 9, 21), name: 'N' + n, phone: n, remark: 'Dispatch', by: '' });
+  const t = load({
+    'Pre CRM': [PRE_HEADER, P(1), P(2), P(3), P(4)],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
+      ot('OD1', '1', 'Delivered', daysAgo(3)),   // Self Ship, Yes → added
+      ot('OD2', '2', 'Delivered', daysAgo(3)),   // Self Ship, No → kept out
+      ot('OD3', '3', 'Delivered', daysAgo(1)),   // Self Ship, yes, but too early → not yet
+      ot('OD4', '4', 'Delivered', daysAgo(3)),   // Self Ship, blank → kept out (as before)
+    ],
+    'Self Ship Cases': [SS_FULL_HEADER, ssW('OD1', '1', 'Yes'), ssW('OD2', '2', 'No'), ssW('OD3', '3', ' yes '), ssW('OD4', '4', '')],
+    'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  const rvOrders = () => t.tab('Review & Rating Data').slice(1).map((r) => r[0]);
+  assert.deepStrictEqual(rvOrders(), ['OD1']);
+  // Yes → No: removed again straight away.
+  t.tab('Self Ship Cases')[1][22] = 'No';
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(2, 23) })`);
+  assert.deepStrictEqual(rvOrders(), []);
+  assert.ok(t.log().some((m) => m.includes('OD1') && m.includes('"Eligible for Review" there is not "Yes"')), t.log().join('\n'));
+  // No → Yes: back right away.
+  t.tab('Self Ship Cases')[2][22] = 'YES';
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(3, 23) })`);
+  assert.deepStrictEqual(rvOrders(), ['OD2']);
+});
+
+scenario('Order ID typed in Self Ship Cases → SKU, FSN, Order Item ID, name, phone, city, PIN filled from Pre CRM; several products → pop-up', () => {
+  const P = (o, item, sku, extra = {}) => {
+    const r = pre({ sku, fsn: 'FSN' + sku, order: o, item, on: ist(2026, 9, 21), name: 'Name ' + o, phone: '91000' + item.slice(-5), remark: extra.remark || 'Dispatch', by: '' });
+    r[10] = 'City ' + o; r[12] = '1100' + item.slice(-2);
+    return r;
+  };
+  const t = load({
+    'Pre CRM': [PRE_HEADER,
+      P('OD1', '338751981948562100', 'SK1'),                       // one product
+      P('OD2', '338700000000000201', 'SK2A'),                      // two different products
+      P('OD2', '338700000000000202', 'SK2B'),
+      P('OD3', '338700000000000301', 'SK3'),                       // same product listed twice
+      P('OD3', '338700000000000301', 'SK3', { remark: 'Dispatch - repeat' }),
+    ],
+    'Order Tracking': [OT_HEADER], 'Review & Rating Data': [RV_HEADER],
+    'Self Ship Cases': [SS_FULL_HEADER, ['', '', '', '', '', '', '', '', 'Vineet', 'tab', 'Return', 'today']],
+  });
+  const ssTab = () => t.ss.getSheetByName('Self Ship Cases');
+  const typeOrder = (row, id) => {
+    const sh = ssTab(); while (sh.data.length < row) sh.data.push([]);
+    sh.data[row - 1][2] = id;
+    t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(${row}, 3) })`);
+  };
+
+  // 1. One product → filled at once; the team's own columns (I-L) are untouched.
+  typeOrder(2, 'OD1');
+  const r2 = ssTab().data[1];
+  assert.deepStrictEqual(r2.slice(0, 12), ['SK1', link('FSNSK1'), 'OD1', '338751981948562100',
+    'Name OD1', '9100062100', 'City OD1', '110000', 'Vineet', 'tab', 'Return', 'today']);
+  assert.strictEqual(ssTab().formats['2,4'], '@', 'Order Item ID kept as text (no 3.38E+17)');
+  assert.strictEqual(t.dialogs.length, 0, 'no pop-up for a single product');
+
+  // 2. Two different products → pop-up with both; picking the second fills it.
+  typeOrder(3, 'OD2');
+  assert.strictEqual(t.dialogs.length, 1);
+  const html = t.dialogs[0].html;
+  assert.ok(html.includes('Self Ship row 3 · Order OD2'), html);
+  assert.ok(html.includes('Item ID 338700000000000201') && html.includes('Item ID 338700000000000202'), html);
+  assert.ok(!html.includes('Name OD2') && !html.includes('91000'), 'no customer name or phone in the pop-up');
+  assert.strictEqual(ssTab().data[2][3], undefined, 'nothing filled until a row is chosen');
+  assert.ok(ssTab().notes['3,3'].includes('2 rows in Pre CRM for this order'));
+  t.run(`CT_fillSelfShipChoices([{ row: 3, orderId: 'OD2', preRow: 4 }])`);
+  assert.deepStrictEqual(ssTab().data[2].slice(0, 4), ['SK2B', link('FSNSK2B'), 'OD2', '338700000000000202']);
+  assert.strictEqual(ssTab().notes['3,3'], undefined, 'the robot\'s note is cleared once filled');
+
+  // 3. The same product listed twice → pop-up tells the two rows apart.
+  typeOrder(4, 'OD3');
+  const html3 = t.dialogs[1].html;
+  assert.ok(html3.includes('Pre CRM row 5') && html3.includes('Pre CRM row 6'), html3);
+  assert.ok(html3.includes('listed 2 times in Pre CRM') && html3.includes('Remarks: Dispatch - repeat'), html3);
+
+  // 4. Unknown Order ID → note; a note typed by a person is never overwritten or cleared.
+  typeOrder(5, 'OD404');
+  assert.ok(ssTab().notes['5,3'].includes('not in Pre CRM'));
+  ssTab().notes['2,3'] = 'Customer called twice';
+  typeOrder(2, 'OD1');
+  assert.strictEqual(ssTab().notes['2,3'], 'Customer called twice');
+
+  // 5. Pasting several Order IDs at once: singles filled, the others in ONE pop-up.
+  const sh = ssTab(); sh.data.push([], [], []);
+  sh.data[5][2] = 'OD1'; sh.data[6][2] = 'OD2'; sh.data[7][2] = 'OD3';
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(6, 1, 3, 23) })`);
+  assert.strictEqual(sh.data[5][0], 'SK1');
+  const last = t.dialogs[t.dialogs.length - 1].html;
+  assert.ok(last.includes('Self Ship row 7 · Order OD2') && last.includes('Self Ship row 8 · Order OD3'), last);
+
+  // 6. A chosen row that moved meanwhile is not filled.
+  assert.throws(() => t.run(`CT_fillSelfShipChoices([{ row: 7, orderId: 'OD3', preRow: 5 }])`), /no longer holds order OD3/);
+});
+
+scenario('pop-up not possible (edit by a teammate) → note on the cell; the menu item finishes it', () => {
+  const P = (item, sku) => pre({ sku, fsn: 'F' + sku, order: 'OD2', item, on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' });
+  const t = load({
+    'Pre CRM': [PRE_HEADER, P('21', 'A'), P('22', 'B')],
+    'Order Tracking': [OT_HEADER], 'Review & Rating Data': [RV_HEADER],
+    'Self Ship Cases': [SS_FULL_HEADER, ['', '', 'OD2']],
+  }, { noUi: true, activeRange: (ss) => ss.getSheetByName('Self Ship Cases').getRange(2, 5) });
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(2, 3) })`);
+  assert.ok(t.ss.getSheetByName('Self Ship Cases').notes['2,3'].includes('Fill Self Ship row(s) from Pre CRM'));
+  assert.strictEqual(t.tab('Self Ship Cases')[1][0], '', 'nothing guessed');
+  // Menu, from the person's own screen:
+  t.run('CT_fillSelfShipSelected()'); // with noUi still on, it reaches the same pop-up step and keeps the note
+  assert.ok(t.ss.getSheetByName('Self Ship Cases').notes['2,3'].includes('2 rows in Pre CRM'));
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);
