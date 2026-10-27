@@ -47,13 +47,24 @@ already there they are **removed** straight away. Changing No → Yes brings the
 delivered 2+ days ago). The robot fills A–G (and M, Order Item Id); your team's columns **H–L are
 never touched**.
 
-**Self Ship Cases**: type or paste an **Order ID in column C** and press Enter. The robot fills
+**Self Ship Cases**: type or paste an **Order ID in column C**. The robot fills
 **SKU (A), FSN (B), Order Item ID (D), Customer Name (E), Phone Number (F), City (G) and Pin code (H)**
 from Pre CRM. If Pre CRM has **more than one row** for that order (several products, or the same
-product listed twice), a **pop-up** asks which row to use. Your other columns are never touched.
+product listed twice), a **question box** lists the rows with numbers: type the number and click OK.
+Your other columns are never touched.
+- **Delete the Order ID** → A, B and D–H are cleared too (also on rows filled in by hand earlier).
 - Order ID not in Pre CRM: a note on the cell says so, and nothing is filled.
-- If the pop-up doesn't appear (for example for a teammate, or after Cancel), select the row and use
-  **📦 Courier Tracking → Fill Self Ship row(s) from Pre CRM**. The same menu item refills rows any time.
+- If the question box doesn't appear, or you clicked Cancel: select the row and use
+  **📦 Courier Tracking → Fill Self Ship row(s) from Pre CRM**. If the box can't be shown at all,
+  the note on the Order ID cell says why.
+- An order removed from Self Ship Cases (row deleted or Order ID cleared) goes back into Review &
+  Rating Data straight away, if it is delivered 2+ days ago.
+
+**Protection against mistakes**: **📦 Courier Tracking → Protect formulas & robot columns** adds a
+*warning* (not a lock) to every formula, the heading row of every tab, the columns the robot fills
+and the robot's own tabs. Anyone, the owner too, who edits them first sees "You are trying to edit
+a protected cell…" and must click OK. Run it again after adding new formulas. Your own protections
+stay as they are; **Remove the robot's protection warnings** takes only the robot's away.
 
 **When it runs:**
 - Courier tracking: every morning between 8:00 and 8:30.

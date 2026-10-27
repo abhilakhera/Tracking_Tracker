@@ -8,7 +8,7 @@ const vm = require('vm');
 const assert = require('assert');
 const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'SelfShipFill.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'SelfShipFill.gs', 'Protect.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
 const DAY = 86400000;
 const ist = (y, m, d) => new Date(Date.UTC(y, m - 1, d) - 330 * 60000); // a date cell (midnight IST)
 const daysAgo = (n) => { const t = new Date(Date.now() + 330 * 60000 - n * DAY); return ist(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); };
@@ -37,9 +37,18 @@ function load(tabs, extra = {}) {
   const locks = makeLockService();
   const ctx = vm.createContext({
     console: { log() {}, error: console.error },
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss, getActiveRange: () => extra.activeRange && extra.activeRange(ss),
-      getUi: () => ({ alert(m) { dialogs.push({ alert: m }); }, showModalDialog(h, title) { if (extra.noUi) throw new Error('Cannot call SpreadsheetApp.getUi() from this context.'); dialogs.push({ title, html: h.html }); } }) },
-    HtmlService: { createHtmlOutput: (html) => ({ html, setWidth() { return this; }, setHeight() { return this; } }) },
+    SpreadsheetApp: { ProtectionType: { RANGE: 'RANGE', SHEET: 'SHEET' }, getActiveSpreadsheet: () => ss, getActiveRange: () => extra.activeRange && extra.activeRange(ss),
+      // The question box answers from extra.answers (a list); "cancel" = Cancel. noUi = cannot be shown.
+      getUi: () => ({
+        ButtonSet: { OK_CANCEL: 'OK_CANCEL' }, Button: { OK: 'OK', CANCEL: 'CANCEL' },
+        alert(title, text) { dialogs.push({ alert: text || title }); return 'OK'; },
+        prompt(title, text) {
+          if (extra.noUi) throw new Error('Cannot call SpreadsheetApp.getUi() from this context.');
+          dialogs.push({ title, text });
+          const a = (extra.answers || []).shift();
+          return { getSelectedButton: () => (a === 'cancel' || a === undefined ? 'CANCEL' : 'OK'), getResponseText: () => String(a ?? '') };
+        },
+      }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; }, deleteProperty: (k) => { delete props[k]; } }) },
     LockService: locks.service,
     ScriptApp: makeScriptApp(triggers),
@@ -622,12 +631,13 @@ scenario('Self Ship order with "Yes" under "Eligible for Review" goes to Review 
   assert.deepStrictEqual(rvOrders(), ['OD2']);
 });
 
-scenario('Order ID typed in Self Ship Cases → SKU, FSN, Order Item ID, name, phone, city, PIN filled from Pre CRM; several products → pop-up', () => {
+scenario('Order ID typed in Self Ship Cases → SKU, FSN, Order Item ID, name, phone, city, PIN filled from Pre CRM; several products → question box', () => {
   const P = (o, item, sku, extra = {}) => {
     const r = pre({ sku, fsn: 'FSN' + sku, order: o, item, on: ist(2026, 9, 21), name: 'Name ' + o, phone: '91000' + item.slice(-5), remark: extra.remark || 'Dispatch', by: '' });
     r[10] = 'City ' + o; r[12] = '1100' + item.slice(-2);
     return r;
   };
+  const answers = [];
   const t = load({
     'Pre CRM': [PRE_HEADER,
       P('OD1', '338751981948562100', 'SK1'),                       // one product
@@ -638,40 +648,44 @@ scenario('Order ID typed in Self Ship Cases → SKU, FSN, Order Item ID, name, p
     ],
     'Order Tracking': [OT_HEADER], 'Review & Rating Data': [RV_HEADER],
     'Self Ship Cases': [SS_FULL_HEADER, ['', '', '', '', '', '', '', '', 'Vineet', 'tab', 'Return', 'today']],
-  });
+  }, { answers });
   const ssTab = () => t.ss.getSheetByName('Self Ship Cases');
   const typeOrder = (row, id) => {
     const sh = ssTab(); while (sh.data.length < row) sh.data.push([]);
     sh.data[row - 1][2] = id;
     t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(${row}, 3) })`);
   };
+  const prompts = () => t.dialogs.filter((d) => d.text);
 
   // 1. One product → filled at once; the team's own columns (I-L) are untouched.
   typeOrder(2, 'OD1');
-  const r2 = ssTab().data[1];
-  assert.deepStrictEqual(r2.slice(0, 12), ['SK1', link('FSNSK1'), 'OD1', '338751981948562100',
+  assert.deepStrictEqual(ssTab().data[1].slice(0, 12), ['SK1', link('FSNSK1'), 'OD1', '338751981948562100',
     'Name OD1', '9100062100', 'City OD1', '110000', 'Vineet', 'tab', 'Return', 'today']);
   assert.strictEqual(ssTab().formats['2,4'], '@', 'Order Item ID kept as text (no 3.38E+17)');
-  assert.strictEqual(t.dialogs.length, 0, 'no pop-up for a single product');
+  assert.strictEqual(prompts().length, 0, 'no question for a single product');
 
-  // 2. Two different products → pop-up with both; picking the second fills it.
+  // 2. Two different products → question box with both; answering 2 fills the second.
+  answers.push('2');
   typeOrder(3, 'OD2');
-  assert.strictEqual(t.dialogs.length, 1);
-  const html = t.dialogs[0].html;
-  assert.ok(html.includes('Self Ship row 3 · Order OD2'), html);
-  assert.ok(html.includes('Item ID 338700000000000201') && html.includes('Item ID 338700000000000202'), html);
-  assert.ok(!html.includes('Name OD2') && !html.includes('91000'), 'no customer name or phone in the pop-up');
-  assert.strictEqual(ssTab().data[2][3], undefined, 'nothing filled until a row is chosen');
-  assert.ok(ssTab().notes['3,3'].includes('2 rows in Pre CRM for this order'));
-  t.run(`CT_fillSelfShipChoices([{ row: 3, orderId: 'OD2', preRow: 4 }])`);
+  const q = prompts()[0].text;
+  assert.ok(q.includes('2 rows for order OD2 (Self Ship row 3)'), q);
+  assert.ok(q.includes('1)  Pre CRM row 3 · Item ID 338700000000000201') && q.includes('2)  Pre CRM row 4 · Item ID 338700000000000202'), q);
+  assert.ok(!q.includes('Name OD2') && !q.includes('91000'), 'no customer name or phone in the question');
   assert.deepStrictEqual(ssTab().data[2].slice(0, 4), ['SK2B', link('FSNSK2B'), 'OD2', '338700000000000202']);
-  assert.strictEqual(ssTab().notes['3,3'], undefined, 'the robot\'s note is cleared once filled');
+  assert.strictEqual(ssTab().notes['3,3'], undefined, 'no note left once filled');
 
-  // 3. The same product listed twice → pop-up tells the two rows apart.
+  // 3. The same product listed twice → the question tells the two rows apart; Cancel leaves the note.
+  answers.push('cancel');
   typeOrder(4, 'OD3');
-  const html3 = t.dialogs[1].html;
-  assert.ok(html3.includes('Pre CRM row 5') && html3.includes('Pre CRM row 6'), html3);
-  assert.ok(html3.includes('listed 2 times in Pre CRM') && html3.includes('Remarks: Dispatch - repeat'), html3);
+  const q3 = prompts()[1].text;
+  assert.ok(q3.includes('Pre CRM row 5') && q3.includes('Pre CRM row 6'), q3);
+  assert.ok(q3.includes('listed 2 times in Pre CRM') && q3.includes('Remarks: Dispatch - repeat'), q3);
+  assert.strictEqual(ssTab().data[3][3], undefined, 'nothing filled after Cancel');
+  assert.ok(ssTab().notes['4,3'].includes('2 rows in Pre CRM for this order'));
+  // A wrong answer is refused politely.
+  answers.push('7');
+  typeOrder(4, 'OD3');
+  assert.ok(t.dialogs.some((d) => d.alert && d.alert.includes('"7" is not one of the numbers 1-2')));
 
   // 4. Unknown Order ID → note; a note typed by a person is never overwritten or cleared.
   typeOrder(5, 'OD404');
@@ -680,31 +694,100 @@ scenario('Order ID typed in Self Ship Cases → SKU, FSN, Order Item ID, name, p
   typeOrder(2, 'OD1');
   assert.strictEqual(ssTab().notes['2,3'], 'Customer called twice');
 
-  // 5. Pasting several Order IDs at once: singles filled, the others in ONE pop-up.
+  // 5. Pasting several Order IDs at once: singles filled, the others asked one after another.
   const sh = ssTab(); sh.data.push([], [], []);
   sh.data[5][2] = 'OD1'; sh.data[6][2] = 'OD2'; sh.data[7][2] = 'OD3';
+  answers.push('1', '2');
   t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(6, 1, 3, 23) })`);
   assert.strictEqual(sh.data[5][0], 'SK1');
-  const last = t.dialogs[t.dialogs.length - 1].html;
-  assert.ok(last.includes('Self Ship row 7 · Order OD2') && last.includes('Self Ship row 8 · Order OD3'), last);
+  assert.strictEqual(sh.data[6][0], 'SK2A');
+  assert.strictEqual(sh.data[7][0], 'SK3');
+  assert.ok(prompts().slice(-2)[0].title.includes('(1 of 2)'));
 
-  // 6. A chosen row that moved meanwhile is not filled.
-  assert.throws(() => t.run(`CT_fillSelfShipChoices([{ row: 7, orderId: 'OD3', preRow: 5 }])`), /no longer holds order OD3/);
+  // 6. Deleting the Order ID clears A, B, D-H (also on a row that was filled in by hand earlier); I-L stay.
+  sh.data[1][2] = '';
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(2, 3) })`);
+  assert.deepStrictEqual(sh.data[1].slice(0, 12), ['', '', '', '', '', '', '', '', 'Vineet', 'tab', 'Return', 'today']);
+  sh.data.push(['typed SKU', 'typed FSN', 'OD777', '777', 'typed name', '999', 'typed city', '123456', 'Vineet']);
+  const r = sh.data.length;
+  sh.data[r - 1][2] = '';
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(${r}, 3) })`);
+  assert.deepStrictEqual(sh.data[r - 1].slice(0, 9), ['', '', '', '', '', '', '', '', 'Vineet']);
 });
 
-scenario('pop-up not possible (edit by a teammate) → note on the cell; the menu item finishes it', () => {
-  const P = (item, sku) => pre({ sku, fsn: 'F' + sku, order: 'OD2', item, on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' });
+scenario('question box not possible → the reason is in the note; pasted Order IDs the edit trigger missed are filled by the change trigger', () => {
+  const P = (order, item, sku) => pre({ sku, fsn: 'F' + sku, order, item, on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' });
   const t = load({
-    'Pre CRM': [PRE_HEADER, P('21', 'A'), P('22', 'B')],
+    'Pre CRM': [PRE_HEADER, P('OD2', '21', 'A'), P('OD2', '22', 'B'), P('OD5', '51', 'E')],
     'Order Tracking': [OT_HEADER], 'Review & Rating Data': [RV_HEADER],
     'Self Ship Cases': [SS_FULL_HEADER, ['', '', 'OD2']],
-  }, { noUi: true, activeRange: (ss) => ss.getSheetByName('Self Ship Cases').getRange(2, 5) });
+  }, { noUi: true });
   t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(2, 3) })`);
-  assert.ok(t.ss.getSheetByName('Self Ship Cases').notes['2,3'].includes('Fill Self Ship row(s) from Pre CRM'));
+  const note = t.ss.getSheetByName('Self Ship Cases').notes['2,3'];
+  assert.ok(note.includes('Fill Self Ship row(s) from Pre CRM') && note.includes('Cannot call SpreadsheetApp.getUi()'), note);
   assert.strictEqual(t.tab('Self Ship Cases')[1][0], '', 'nothing guessed');
-  // Menu, from the person's own screen:
-  t.run('CT_fillSelfShipSelected()'); // with noUi still on, it reaches the same pop-up step and keeps the note
-  assert.ok(t.ss.getSheetByName('Self Ship Cases').notes['2,3'].includes('2 rows in Pre CRM'));
+
+  // A paste the edit trigger didn't report: the change trigger fills rows with an Order ID and empty A, B, D-H.
+  t.ss.getActiveSheet = () => t.ss.getSheetByName('Self Ship Cases');
+  t.tab('Self Ship Cases').push(['', '', 'OD5'], ['kept', '', 'OD5']);
+  t.run(`CT_onChange({ changeType: 'EDIT', source: SpreadsheetApp.getActiveSpreadsheet() })`);
+  assert.deepStrictEqual(t.tab('Self Ship Cases')[2].slice(0, 4), ['E', link('FE'), 'OD5', '51']);
+  assert.strictEqual(t.tab('Self Ship Cases')[3][0], 'kept', 'a row with something already typed in A, B, D-H is left alone');
+});
+
+scenario('order removed from Self Ship Cases (row deleted or Order ID cleared) → back in Review & Rating Data straight away', () => {
+  const ot = (order, item, brief, when) => [order, '', '', 'F' + item, '', '', 'T' + item, 'Delhivery', brief, brief, when, '', '', '', '', item];
+  const P = (n) => pre({ sku: 'S' + n, fsn: 'F' + n, order: 'OD' + n, item: String(n), on: ist(2026, 9, 21), name: 'N' + n, phone: n, remark: 'Dispatch', by: '' });
+  const t = load({
+    'Pre CRM': [PRE_HEADER, P(1), P(2)],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']), ot('OD1', '1', 'Delivered', daysAgo(17)), ot('OD2', '2', 'Delivered', daysAgo(17))],
+    'Self Ship Cases': [SS_FULL_HEADER], 'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  const rvOrders = () => t.tab('Review & Rating Data').slice(1).map((r) => r[0]).sort();
+  assert.deepStrictEqual(rvOrders(), ['OD1', 'OD2']);
+  // 15 days later both become Self Ship cases → removed at once.
+  t.tab('Self Ship Cases').push(ssW('OD1', '1', ''), ssW('OD2', '2', ''));
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(2, 3, 2, 1) })`);
+  assert.deepStrictEqual(rvOrders(), []);
+  // OD1's row is deleted from Self Ship Cases (a whole-row delete fires only the change trigger).
+  t.ss.getActiveSheet = () => t.ss.getSheetByName('Self Ship Cases');
+  t.tab('Self Ship Cases').splice(1, 1);
+  t.run(`CT_onChange({ changeType: 'REMOVE_ROW', source: SpreadsheetApp.getActiveSpreadsheet() })`);
+  assert.deepStrictEqual(rvOrders(), ['OD1']);
+  // OD2's Order ID is cleared (edit trigger).
+  t.tab('Self Ship Cases')[1][2] = '';
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(2, 3) })`);
+  assert.deepStrictEqual(rvOrders(), ['OD1', 'OD2']);
+});
+
+scenario('protection: warnings (not locks) on robot columns, headings, formulas and robot tabs; own protections kept; refresh does not duplicate', () => {
+  const t = load({
+    'Pre CRM': [PRE_HEADER, ['S1', link('F1'), 'P', '=vlookup(B2,category!$B$2:$C$1000,2,0)'], ['S2', link('F2'), 'P', '=vlookup(B3,category!$B$2:$C$1000,2,0)']],
+    'Order Tracking': [OT_HEADER, ['OD1', '', '', '', '', '', '', '', '', '', '', '', '=Ifs(1)']],
+    'Self Ship Cases': [SS_FULL_HEADER], 'Review & Rating Data': [RV_HEADER], 'Order Sync Log': [['Time']],
+  });
+  t.ss.addProtection('RANGE', 'Order Tracking!whole').setDescription('Protected By The Kolectives');
+  t.run('CT_applyProtection_(SpreadsheetApp.getActiveSpreadsheet())');
+  const mine = () => t.ss.protections.filter((p) => p.description.startsWith('📦 Robot: '));
+  const where = mine().map((p) => p.where + ' ' + p.description.replace('📦 Robot: ', ''));
+  assert.ok(mine().every((p) => p.warningOnly), 'warnings only, never hard locks');
+  assert.ok(where.includes('Order Sync Log this tab is written by the robot'), where.join('\n'));
+  assert.ok(where.includes('Order Tracking!R2C1:R1000C6 filled by the robot'), where.join('\n'));     // A-F
+  assert.ok(where.includes('Order Tracking!R2C9:R1000C12 filled by the robot'), where.join('\n'));    // I-L
+  assert.ok(where.includes('Order Tracking!R2C14:R1000C16 filled by the robot'), where.join('\n'));   // N-P
+  assert.ok(where.includes('Self Ship Cases!R2C1:R1000C2 filled by the robot') && where.includes('Self Ship Cases!R2C4:R1000C8 filled by the robot'), where.join('\n'));
+  assert.ok(where.includes('Pre CRM!R2C4:R3C4 formula'), 'the Category vlookup formulas');
+  assert.ok(!where.some((w) => w.startsWith('Pre CRM!R2C2')), 'FSN links made by the robot are not treated as formulas');
+  assert.ok(where.includes('Order Tracking!R2C13:R2C13 formula'), 'Days Remaining formula in M');
+  assert.ok(where.includes('Pre CRM!R1C1:R1C20 heading row'), where.join('\n'));
+  assert.ok(!where.some((w) => /Order Tracking!R2C7|Order Tracking!R2C8/.test(w)), 'Tracking ID and Courier stay free');
+  const n = mine().length;
+  t.run('CT_applyProtection_(SpreadsheetApp.getActiveSpreadsheet())');
+  assert.strictEqual(mine().length, n, 'running again refreshes, no duplicates');
+  assert.ok(t.ss.protections.some((p) => p.description === 'Protected By The Kolectives'), 'your own protection is kept');
+  t.run('CT_removeProtection_(SpreadsheetApp.getActiveSpreadsheet())');
+  assert.deepStrictEqual(t.ss.protections.map((p) => p.description), ['Protected By The Kolectives']);
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);

@@ -72,7 +72,8 @@ apps-script/          code to paste into Extensions → Apps Script
   RajSolutions.gs     Raj Solutions connector (DP World)
   DPWorld.gs          DP World website reader (off: the page now needs a captcha)
   Sync.gs             Pre CRM → Order Tracking → Review & Rating Data
-  SelfShipFill.gs     Self Ship Cases: fill a row from Pre CRM when an Order ID is entered (pop-up if several)
+  SelfShipFill.gs     Self Ship Cases: fill a row from Pre CRM when an Order ID is entered (question box if several)
+  Protect.gs          "warning before editing" protection for formulas, headings and robot columns
   Fsn.gs              FSN → clickable Flipkart link, in every tab
   Import.gs           seller team's tracking spreadsheet → hidden "Raw Order Tracking" tab
   Utils.gs            date reading, courier-name matching

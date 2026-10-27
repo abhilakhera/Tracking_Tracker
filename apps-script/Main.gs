@@ -29,6 +29,8 @@ function CT_setup() {
   ScriptApp.newTrigger('CT_onOpen').forSpreadsheet(ss).onOpen().create();
   CT_deleteTriggers_('CT_onEdit');
   ScriptApp.newTrigger('CT_onEdit').forSpreadsheet(ss).onEdit().create();
+  CT_deleteTriggers_('CT_onChange');
+  ScriptApp.newTrigger('CT_onChange').forSpreadsheet(ss).onChange().create();
   CT_deleteTriggers_('CT_hourlySync');
   ScriptApp.newTrigger('CT_hourlySync').timeBased().everyHours(CT_SYNC.SYNC_EVERY_HOURS).create();
   CT_deleteTriggers_('CT_importTracking');
@@ -69,6 +71,9 @@ function CT_onOpen() {
     .addSeparator()
     .addItem('Turn ON daily update (' + CT_CONFIG.DAILY_UPDATE_HOUR + ' AM)', 'CT_turnOnDailyUpdate')
     .addItem('Turn OFF daily update', 'CT_turnOffDailyUpdate')
+    .addSeparator()
+    .addItem('Protect formulas & robot columns (warning before changes)', 'CT_protectSheet')
+    .addItem('Remove the robot\'s protection warnings', 'CT_unprotectSheet')
     .addToUi();
 }
 

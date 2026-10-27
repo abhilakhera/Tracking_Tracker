@@ -56,11 +56,14 @@ function makeSheet(name, rows, ss, writes) {
         setValue(x) { ensure(r); data[r - 1][c - 1] = x; writes.push(`${name}!R${r}C${c}`); return this; },
         setNumberFormat(f) { formats[`${r},${c}`] = f; return this; },
         setFontWeight() { return this; },
+        protect() { return ss.addProtection('RANGE', `${name}!R${r}C${c}:R${r + nr - 1}C${c + nc - 1}`); },
+        getFormula: () => (isFormula(get(r, c)) ? get(r, c) : ''),
         getNote: () => sheet.notes[`${r},${c}`] || '',
         setNote(n) { if (n) sheet.notes[`${r},${c}`] = n; else delete sheet.notes[`${r},${c}`]; return this; },
       };
     },
     clearContents() { data.length = 0; },
+    protect() { return ss.addProtection('SHEET', name); },
     getParent: () => ss,
   };
   return sheet;
@@ -76,6 +79,16 @@ function makeSpreadsheet(tabs) {
     insertSheet: (n) => { const s = makeSheet(n, [], ss, writes); sheets.push(s); return s; },
     getSpreadsheetTimeZone: () => 'Asia/Kolkata',
     toast() {},
+    protections: [],
+    addProtection(type, where) {
+      const p = { type, where, description: '', warningOnly: false,
+        setDescription(d) { p.description = d; return p; }, getDescription: () => p.description,
+        setWarningOnly(w) { p.warningOnly = w; return p; },
+        remove() { ss.protections.splice(ss.protections.indexOf(p), 1); } };
+      ss.protections.push(p);
+      return p;
+    },
+    getProtections: (type) => ss.protections.filter((p) => p.type === type),
   };
   Object.entries(tabs).forEach(([n, rows]) => sheets.push(makeSheet(n, rows, ss, writes)));
   return ss;

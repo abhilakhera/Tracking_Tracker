@@ -68,6 +68,28 @@ function CT_onEdit(e) {
   }
 }
 
+/**
+ * Installable "on change" trigger (created by CT_setup). Catches what the edit trigger doesn't see:
+ *  - whole rows deleted or inserted in Self Ship Cases or Pre CRM → sync straight away (e.g. an order
+ *    removed from Self Ship Cases goes back into Review & Rating Data);
+ *  - Order IDs pasted into Self Ship Cases in ways the edit trigger misses → those rows are filled.
+ */
+function CT_onChange(e) {
+  var type = (e && e.changeType) || 'OTHER';
+  if (type === 'FORMAT' || type === 'INSERT_COLUMN' || type === 'REMOVE_COLUMN') return;
+  var ss = (e && e.source) || SpreadsheetApp.getActiveSpreadsheet();
+  var name = '';
+  try { name = ss.getActiveSheet().getName(); } catch (err) { /* no active sheet (e.g. API change) */ }
+  var selfShip = name === CT_SYNC.SELF_SHIP.SHEET;
+  if (selfShip || !name) {
+    try { CT_fillSelfShipMissing_(ss); } catch (err) { console.error('Self Ship fill: ' + err.message); }
+  }
+  if (type === 'REMOVE_ROW' || type === 'INSERT_ROW' || type === 'OTHER') {
+    if (selfShip) { if (!CT_runSync_({})) CT_scheduleSync_(); }
+    else if (name === CT_SYNC.PRE_CRM.SHEET || !name) CT_scheduleSync_();
+  }
+}
+
 /** True if the edited range includes the given column letter. */
 function CT_editTouchesColumn_(range, letter) {
   var col = CT_columnNumber_(letter);
