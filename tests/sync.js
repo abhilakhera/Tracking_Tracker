@@ -8,7 +8,7 @@ const vm = require('vm');
 const assert = require('assert');
 const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
 
-const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'SelfShipFill.gs', 'Protect.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
+const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'SelfShipFill.gs', 'Protect.gs', 'EditHistory.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
 const DAY = 86400000;
 const ist = (y, m, d) => new Date(Date.UTC(y, m - 1, d) - 330 * 60000); // a date cell (midnight IST)
 const daysAgo = (n) => { const t = new Date(Date.now() + 330 * 60000 - n * DAY); return ist(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); };
@@ -40,8 +40,11 @@ function load(tabs, extra = {}) {
     SpreadsheetApp: { ProtectionType: { RANGE: 'RANGE', SHEET: 'SHEET' }, getActiveSpreadsheet: () => ss, getActiveRange: () => extra.activeRange && extra.activeRange(ss),
       // The question box answers from extra.answers (a list); "cancel" = Cancel. noUi = cannot be shown.
       getUi: () => ({
-        ButtonSet: { OK_CANCEL: 'OK_CANCEL' }, Button: { OK: 'OK', CANCEL: 'CANCEL' },
-        alert(title, text) { dialogs.push({ alert: text || title }); return 'OK'; },
+        ButtonSet: { OK_CANCEL: 'OK_CANCEL', YES_NO: 'YES_NO', OK: 'OK' }, Button: { OK: 'OK', CANCEL: 'CANCEL', YES: 'YES', NO: 'NO' },
+        alert(title, text, buttons) {
+          dialogs.push({ alert: text || title });
+          return buttons === 'YES_NO' ? (String((extra.answers || []).shift()).toLowerCase() === 'yes' ? 'YES' : 'NO') : 'OK';
+        },
         prompt(title, text) {
           if (extra.noUi) throw new Error('Cannot call SpreadsheetApp.getUi() from this context.');
           dialogs.push({ title, text });
@@ -326,12 +329,14 @@ scenario('FSN links in every tab: pasted values right away, script-written value
   const before = t.ss.writes.length;
   paste('Negative Rating Data', 2, 3, 3, 3);
   assert.deepStrictEqual(neg.slice(1).map((r) => r.slice(2)), [['pasted C', 'pasted D', link('FSNONE')], ['pasted C', 'pasted D', link('FSNTWO')], ['pasted C', 'pasted D', '']]);
-  assert.ok(t.ss.writes.slice(before).every((w) => /^Negative Rating Data!R[23]C5$/.test(w)), t.ss.writes.slice(before).join(' '));
+  const own = (from) => t.ss.writes.slice(from).filter((w) => !w.startsWith('Edit History!')); // the paste itself is recorded there
+  assert.ok(own(before).every((w) => /^Negative Rating Data!R[23]C5$/.test(w)), own(before).join(' '));
+  assert.deepStrictEqual(t.tab('Edit History').slice(1).map((r) => r[3]), ['C2', 'D2', 'E2', 'C3', 'D3', 'E3', 'C4', 'D4', 'E4']);
 
   // Editing only the heading row changes nothing.
   const before2 = t.ss.writes.length;
   paste('Distribution', 1, 1, 1, 3);
-  assert.strictEqual(t.ss.writes.length, before2);
+  assert.strictEqual(own(before2).length, 0);
 
   // Values written by scripts are converted by the hourly run, in every tab.
   t.run('CT_hourlySync()');
@@ -788,6 +793,76 @@ scenario('protection: warnings (not locks) on robot columns, headings, formulas 
   assert.ok(t.ss.protections.some((p) => p.description === 'Protected By The Kolectives'), 'your own protection is kept');
   t.run('CT_removeProtection_(SpreadsheetApp.getActiveSpreadsheet())');
   assert.deepStrictEqual(t.ss.protections.map((p) => p.description), ['Protected By The Kolectives']);
+});
+
+scenario('Edit History: every change by a person is recorded; one mistaken cell can be restored later without undoing other changes', () => {
+  const answers = [];
+  let active = null;
+  const t = load({
+    'Pre CRM': [PRE_HEADER, pre({ sku: 'S1', fsn: 'F1', order: 'OD1', item: '338751981948562100', on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Hold', by: '' })],
+    'Order Tracking': [OT_HEADER], 'Self Ship Cases': [SS_FULL_HEADER], 'Review & Rating Data': [RV_HEADER],
+    'Sheet18': [['a', 'b'], ['1', '2'], ['3', '4']], 'Order Sync Log': [['Time']],
+  }, { answers, activeRange: () => active });
+  const ss = t.ss;
+  const edit = (tab, a1, newValue, oldValue) => {
+    const r = ss.getSheetByName(tab).getRange(a1);
+    if (newValue !== undefined) r.setValue(newValue);
+    const ev = oldValue === undefined ? '' : `, oldValue: ${JSON.stringify(oldValue)}`;
+    t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName(${JSON.stringify(tab)}).getRange(${JSON.stringify(a1)}), user: { getEmail: () => 'team@example.com' }${ev} })`);
+  };
+  const hist = () => t.tab('Edit History');
+
+  // 1. Someone mistakenly overwrites a cell (Sheet18 B2), then other people keep working.
+  edit('Sheet18', 'B2', 'mistake', '2');
+  edit('Sheet18', 'A3', 'later change', '3');
+  assert.deepStrictEqual(hist()[0], ['Time', 'Who', 'Tab', 'Cell', 'Old value', 'New value', 'Status']);
+  assert.deepStrictEqual(hist()[1].slice(1, 6), ['team@example.com', 'Sheet18', 'B2', '2', 'mistake']);
+  assert.strictEqual(Object.prototype.toString.call(hist()[1][0]), '[object Date]');
+
+  // 2. Restore line 2 of Edit History: only B2 gets its old value back; A3 keeps the later change.
+  active = ss.getSheetByName('Edit History').getRange(2, 1, 1, 7);
+  t.run('CT_restoreSelectedChanges()');
+  assert.deepStrictEqual(t.tab('Sheet18').slice(1), [['1', '2'], ['later change', '4']]);
+  assert.ok(/^Restored /.test(hist()[1][6]), hist()[1][6]);
+  assert.deepStrictEqual(hist()[3].slice(2, 6), ['Sheet18', 'B2', 'mistake', '2'], 'the restore itself is recorded too');
+
+  // 3. A cell changed again since: asked first; "No" leaves it.
+  edit('Sheet18', 'B3', 'first', '4');
+  edit('Sheet18', 'B3', 'second', 'first');
+  active = ss.getSheetByName('Edit History').getRange(5, 1);
+  answers.push('no');
+  t.run('CT_restoreSelectedChanges()');
+  assert.strictEqual(t.tab('Sheet18')[2][1], 'second');
+  assert.ok(t.dialogs.some((d) => d.alert && d.alert.includes('now shows "second"')));
+  answers.push('yes');
+  t.run('CT_restoreSelectedChanges()');
+  assert.strictEqual(t.tab('Sheet18')[2][1], '4');
+
+  // 4. A long ID comes back whole (as text), not as 3.38E+17.
+  edit('Pre CRM', 'F2', '123', '338751981948562100');
+  active = ss.getSheetByName('Edit History').getRange(hist().length, 1);
+  t.run('CT_restoreSelectedChanges()');
+  assert.strictEqual(t.tab('Pre CRM')[1][5], '338751981948562100');
+  assert.strictEqual(ss.getSheetByName('Pre CRM').formats['2,6'], '@');
+
+  // 5. Many cells at once: recorded cell by cell with new values; the old ones point to Version history.
+  const n = hist().length;
+  t.tab('Sheet18')[1] = ['p1', 'p2'];
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Sheet18').getRange('A2:B2') })`);
+  assert.deepStrictEqual(hist().slice(n).map((r) => [r[3], r[4], r[5]]), [['A2', '(old value not known)', 'p1'], ['B2', '(old value not known)', 'p2']]);
+  assert.ok(hist()[n][6].includes('File → Version history'));
+  active = ss.getSheetByName('Edit History').getRange(n + 1, 1);
+  t.run('CT_restoreSelectedChanges()');
+  assert.ok(t.dialogs.some((d) => d.alert && d.alert.includes('old value not known (use File → Version history)')));
+
+  // 6. Deleted rows are noted; the robot's own tabs and its own writes are not recorded.
+  t.ss.getActiveSheet = () => ss.getSheetByName('Sheet18');
+  t.run(`CT_onChange({ changeType: 'REMOVE_ROW', source: SpreadsheetApp.getActiveSpreadsheet() })`);
+  assert.deepStrictEqual(hist()[hist().length - 1].slice(2, 5), ['Sheet18', '(row(s) deleted)', '(old value not known)']);
+  const m = hist().length;
+  edit('Order Sync Log', 'A1', 'x', 'Time');
+  t.run('CT_syncNow()');
+  assert.strictEqual(hist().length, m);
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);

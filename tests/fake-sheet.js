@@ -33,8 +33,18 @@ function makeSheet(name, rows, ss, writes) {
     notes: {},
     hideSheet() { sheet.hidden = true; },
     deleteRow(r) { data.splice(r - 1, 1); writes.push(`${name}!delete R${r}`); },
+    deleteRows(r, n) { data.splice(r - 1, n); writes.push(`${name}!delete R${r}x${n}`); },
     getRange(r, c, nr = 1, nc = 1) {
+      if (typeof r === 'string') { // "B7" or "A2:C3"
+        const [a, b] = r.split(':').map((x) => /^([A-Z]+)(\d+)$/.exec(x));
+        const col = (l) => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+        const r1 = Number(a[2]), c1 = col(a[1]);
+        return sheet.getRange(r1, c1, b ? Number(b[2]) - r1 + 1 : 1, b ? col(b[1]) - c1 + 1 : 1);
+      }
+      const letter = (n) => { let t = ''; while (n) { t = String.fromCharCode(65 + ((n - 1) % 26)) + t; n = Math.floor((n - 1) / 26); } return t; };
       return {
+        getA1Notation: () => letter(c) + r + (nr > 1 || nc > 1 ? ':' + letter(c + nc - 1) + (r + nr - 1) : ''),
+        setFormula(f) { ensure(r); data[r - 1][c - 1] = f; writes.push(`${name}!R${r}C${c}`); return this; },
         getSheet: () => sheet,
         getRow: () => r,
         getColumn: () => c,

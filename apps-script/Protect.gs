@@ -57,13 +57,13 @@ function CT_applyProtection_(ss) {
   };
 
   // 1. The robot's own tabs: completely.
-  [CT_CONFIG.LOG_SHEET_NAME, CT_SYNC.LOG_SHEET_NAME, CT_SYNC.REMOVED_SHEET_NAME, CT_IMPORT.TARGET_SHEET].forEach(function (name) {
+  [CT_CONFIG.LOG_SHEET_NAME, CT_SYNC.LOG_SHEET_NAME, CT_SYNC.REMOVED_SHEET_NAME, CT_IMPORT.TARGET_SHEET, CT_HISTORY.SHEET].forEach(function (name) {
     var sh = ss.getSheetByName(name);
     if (sh) warn(sh, 'this tab is written by the robot');
   });
   var robotTabs = {};
   robotTabs[CT_CONFIG.LOG_SHEET_NAME] = robotTabs[CT_SYNC.LOG_SHEET_NAME] = robotTabs[CT_SYNC.REMOVED_SHEET_NAME] =
-    robotTabs[CT_IMPORT.TARGET_SHEET] = true;
+    robotTabs[CT_IMPORT.TARGET_SHEET] = robotTabs[CT_HISTORY.SHEET] = true;
 
   // 2. Columns the robot fills (from row 2 down).
   var O = CT_SYNC.ORDER_TRACKING, R = CT_SYNC.REVIEW, S = CT_SYNC.SELF_SHIP, K = CT_CONFIG.COLUMNS;

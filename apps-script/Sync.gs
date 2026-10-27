@@ -45,6 +45,8 @@ function CT_delayedSync() {
 /** Installable "on edit" trigger (created by CT_setup). Ignores edits to other tabs. */
 function CT_onEdit(e) {
   if (!e || !e.range) return;
+  // Every change by a person goes to the "Edit History" tab first (old value → new value).
+  try { CT_recordEdit_(e); } catch (err) { console.error('Edit History: ' + err.message); }
   // FSNs typed or pasted in any tab become links straight away.
   if (CT_SYNC.FSN_AS_LINK) {
     try { CT_linkFsnsInEdit_(e.range); } catch (err) { console.error('FSN links: ' + err.message); }
@@ -81,6 +83,9 @@ function CT_onChange(e) {
   var name = '';
   try { name = ss.getActiveSheet().getName(); } catch (err) { /* no active sheet (e.g. API change) */ }
   var selfShip = name === CT_SYNC.SELF_SHIP.SHEET;
+  if (type === 'REMOVE_ROW') {
+    try { CT_recordRowsRemoved_(ss, name); } catch (err) { console.error('Edit History: ' + err.message); }
+  }
   if (selfShip || !name) {
     try { CT_fillSelfShipMissing_(ss); } catch (err) { console.error('Self Ship fill: ' + err.message); }
   }

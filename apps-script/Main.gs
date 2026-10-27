@@ -72,6 +72,7 @@ function CT_onOpen() {
     .addItem('Turn ON daily update (' + CT_CONFIG.DAILY_UPDATE_HOUR + ' AM)', 'CT_turnOnDailyUpdate')
     .addItem('Turn OFF daily update', 'CT_turnOffDailyUpdate')
     .addSeparator()
+    .addItem('Restore selected change(s) (Edit History tab)', 'CT_restoreSelectedChanges')
     .addItem('Protect formulas & robot columns (warning before changes)', 'CT_protectSheet')
     .addItem('Remove the robot\'s protection warnings', 'CT_unprotectSheet')
     .addToUi();

@@ -60,6 +60,20 @@ Your other columns are never touched.
 - An order removed from Self Ship Cases (row deleted or Order ID cleared) goes back into Review &
   Rating Data straight away, if it is delivered 2+ days ago.
 
+**Edit History** (its own tab): every change a person makes in any tab is recorded: time, who,
+tab, cell, old value, new value. To undo one mistaken change, even days later and after many other
+changes: go to **Edit History**, select its line (or several), then **📦 Courier Tracking → Restore
+selected change(s)**. Only that cell gets its old value back; everything else stays. If the cell was
+changed again since, you're asked first.
+- When many cells are changed at once (a paste over several cells, Delete on a selection) or rows
+  are deleted, Google doesn't tell the robot the old values. Those lines say "(old value not known)"
+  and give the time to use in **File → Version history**, where you can open the sheet as it was
+  just before and copy the cells back.
+- For one cell, you can also right-click it → **Show edit history**.
+- If a formula was typed over in one cell, Edit History has its old *result*, not the formula; use
+  Version history for that (the protection warnings below help prevent it).
+- The newest 20,000 lines are kept.
+
 **Protection against mistakes**: **📦 Courier Tracking → Protect formulas & robot columns** adds a
 *warning* (not a lock) to every formula, the heading row of every tab, the columns the robot fills
 and the robot's own tabs. Anyone, the owner too, who edits them first sees "You are trying to edit

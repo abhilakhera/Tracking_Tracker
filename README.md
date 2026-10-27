@@ -74,6 +74,7 @@ apps-script/          code to paste into Extensions → Apps Script
   Sync.gs             Pre CRM → Order Tracking → Review & Rating Data
   SelfShipFill.gs     Self Ship Cases: fill a row from Pre CRM when an Order ID is entered (question box if several)
   Protect.gs          "warning before editing" protection for formulas, headings and robot columns
+  EditHistory.gs      "Edit History" tab: every change by a person; restore one cell's old value
   Fsn.gs              FSN → clickable Flipkart link, in every tab
   Import.gs           seller team's tracking spreadsheet → hidden "Raw Order Tracking" tab
   Utils.gs            date reading, courier-name matching
