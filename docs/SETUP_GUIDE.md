@@ -60,19 +60,21 @@ Your other columns are never touched.
 - An order removed from Self Ship Cases (row deleted or Order ID cleared) goes back into Review &
   Rating Data straight away, if it is delivered 2+ days ago.
 
-**Edit History** (its own tab): every change a person makes in any tab is recorded: time, who,
-tab, cell, old value, new value. To undo one mistaken change, even days later and after many other
-changes: go to **Edit History**, select its line (or several), then **📦 Courier Tracking → Restore
-selected change(s)**. Only that cell gets its old value back; everything else stays. If the cell was
-changed again since, you're asked first.
+**Edit History** (a separate Google Sheets file, "Edit History – <this spreadsheet>", in the Drive
+of the person who ran CT_setup): every change a person makes in any tab is recorded there: time, who,
+tab, cell, old value, new value. It is a separate file because Google Sheets forgets Ctrl+Z (Undo)
+whenever a script writes into the spreadsheet you are working in; this way Ctrl+Z keeps working.
+- Open it with **📦 Courier Tracking → Open Edit History**.
+- To undo one mistaken change, even days later and after many other changes: tick **Restore** on
+  its line. Only that cell gets its old value back; everything else stays. If the cell was changed
+  again since, nothing happens and the Status says so; tick **Restore even if changed since** to do it anyway.
 - When many cells are changed at once (a paste over several cells, Delete on a selection) or rows
   are deleted, Google doesn't tell the robot the old values. Those lines say "(old value not known)"
-  and give the time to use in **File → Version history**, where you can open the sheet as it was
-  just before and copy the cells back.
+  and give the time to use in **File → Version history** of the main sheet.
 - For one cell, you can also right-click it → **Show edit history**.
-- If a formula was typed over in one cell, Edit History has its old *result*, not the formula; use
-  Version history for that (the protection warnings below help prevent it).
 - The newest 20,000 lines are kept.
+- Ctrl+Z still can't undo past a moment when the robot itself changed the sheet (for example right
+  after it filled a Self Ship row or updated Order Tracking); use the Edit History file for those.
 
 **Protection against mistakes**: **📦 Courier Tracking → Protect formulas & robot columns** adds a
 *warning* (not a lock) to every formula, the heading row of every tab, the columns the robot fills

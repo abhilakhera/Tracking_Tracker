@@ -31,6 +31,9 @@ function CT_setup() {
   ScriptApp.newTrigger('CT_onEdit').forSpreadsheet(ss).onEdit().create();
   CT_deleteTriggers_('CT_onChange');
   ScriptApp.newTrigger('CT_onChange').forSpreadsheet(ss).onChange().create();
+  // Edit History lives in its own file (so Ctrl+Z keeps working here); ticking "Restore" there undoes one change.
+  CT_deleteTriggers_('CT_onHistoryEdit');
+  ScriptApp.newTrigger('CT_onHistoryEdit').forSpreadsheet(CT_historySheet_().getParent().getId()).onEdit().create();
   CT_deleteTriggers_('CT_hourlySync');
   ScriptApp.newTrigger('CT_hourlySync').timeBased().everyHours(CT_SYNC.SYNC_EVERY_HOURS).create();
   CT_deleteTriggers_('CT_importTracking');
@@ -72,7 +75,7 @@ function CT_onOpen() {
     .addItem('Turn ON daily update (' + CT_CONFIG.DAILY_UPDATE_HOUR + ' AM)', 'CT_turnOnDailyUpdate')
     .addItem('Turn OFF daily update', 'CT_turnOffDailyUpdate')
     .addSeparator()
-    .addItem('Restore selected change(s) (Edit History tab)', 'CT_restoreSelectedChanges')
+    .addItem('Open Edit History (undo one change)', 'CT_openEditHistory')
     .addItem('Protect formulas & robot columns (warning before changes)', 'CT_protectSheet')
     .addItem('Remove the robot\'s protection warnings', 'CT_unprotectSheet')
     .addToUi();

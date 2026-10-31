@@ -13,7 +13,7 @@ const assert = require('assert');
 const FILES = ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Sync.gs', 'SelfShipFill.gs', 'Protect.gs', 'EditHistory.gs', 'Fsn.gs', 'Import.gs', 'Main.gs'];
 const G = 6, I = 8, J = 9, K = 10; // 0-based column indexes in a row array
 
-const { makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
+const { makeFiles, makeSpreadsheet, makeScriptApp, makeLockService, Utilities } = require('./fake-sheet');
 
 const row = (id, courier, brief = '', status = '', date = '') => ['', '', '', '', '', '', id, courier, brief, status, date];
 const json = (code, body) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(body) });
@@ -36,7 +36,8 @@ function setup(rows, props, trackCourierReply, extra = {}) {
   const main = ss.getSheetByName('Order Tracking');
   const sheets = ss.getSheets();
   const calls = [];
-  const triggers = (extra.triggers || []).slice(); // triggers that already exist (other scripts)
+  const triggers = (extra.triggers || []).slice();
+  const files = makeFiles(ss); // triggers that already exist (other scripts)
   let slept = 0;
   function fetch(url, opts) {
     calls.push('GET ' + url);
@@ -69,6 +70,7 @@ function setup(rows, props, trackCourierReply, extra = {}) {
     console: { log() {}, error: console.error },
     SpreadsheetApp: {
       getActiveSpreadsheet: () => ss,
+      openById: files.openById, create: files.create,
       getActiveRange: () => extra.activeRange && extra.activeRange(sheets),
       getUi: () => ({ alert: (m) => { (extra.alerts || []).push(m); } }),
     },
@@ -239,6 +241,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
     { handler: 'CT_onOpen', spreadsheet: true, onOpen: true },
     { handler: 'CT_onEdit', spreadsheet: true, onEdit: true },
     { handler: 'CT_onChange', spreadsheet: true, onChange: true },
+    { handler: 'CT_onHistoryEdit', spreadsheet: 'created1', onEdit: true }, // the separate Edit History file
     { handler: 'CT_hourlySync', everyHours: 1 },
     { handler: 'CT_importTracking', everyMinutes: 30 },
     { handler: 'CT_onSourceChange', spreadsheet: '1hI8DpYwC0i3YQsDUIexzj_IWb2-6OyE476B89HKgAp8', onEdit: true },
@@ -247,7 +250,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   ]);
   assert.deepStrictEqual(t.triggers.filter((x) => !x.handler.startsWith('CT_')).map((x) => x.handler), ['theirDailyReport', 'onEditHandler']);
   t.run('CT_turnOffDailyUpdate');
-  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['theirDailyReport', 'onEditHandler', 'CT_onOpen', 'CT_onEdit', 'CT_onChange', 'CT_hourlySync', 'CT_importTracking', 'CT_onSourceChange', 'CT_onSourceChange']);
+  assert.deepStrictEqual(t.triggers.map((x) => x.handler), ['theirDailyReport', 'onEditHandler', 'CT_onOpen', 'CT_onEdit', 'CT_onChange', 'CT_onHistoryEdit', 'CT_hourlySync', 'CT_importTracking', 'CT_onSourceChange', 'CT_onSourceChange']);
   console.log('Scenario 6 (setup: menu, edit, hourly sync and daily 8 AM triggers; other triggers untouched): OK');
 }
 
