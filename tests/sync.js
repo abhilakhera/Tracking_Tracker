@@ -631,7 +631,7 @@ scenario('Self Ship order with "Yes" under "Eligible for Review" goes to Review 
   t.tab('Self Ship Cases')[1][22] = 'No';
   t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(2, 23) })`);
   assert.deepStrictEqual(rvOrders(), []);
-  assert.ok(t.log().some((m) => m.includes('OD1') && m.includes('"Eligible for Review" there is not "Yes"')), t.log().join('\n'));
+  assert.ok(t.log().some((m) => m.includes('OD1') && m.includes('none of its rows there says "Yes" under "Eligible for Review"')), t.log().join('\n'));
   // No → Yes: back right away.
   t.tab('Self Ship Cases')[2][22] = 'YES';
   t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(3, 23) })`);
@@ -878,6 +878,37 @@ scenario('Edit History in a separate file (Ctrl+Z keeps working): every change b
   // 7. The menu shows the link to the file.
   t.run('CT_openEditHistory()');
   assert.ok(t.dialogs.some((d) => d.alert && d.alert.includes('https://docs.google.com/spreadsheets/d/created1')));
+});
+
+scenario('two complaints for the same product: one "Yes" is enough; matched by Order ID and Order Item ID', () => {
+  const ot = (order, item, brief, when) => [order, '', '', 'F' + item, '', '', 'T' + item, 'Delhivery', brief, brief, when, '', '', '', '', item];
+  const P = (order, item) => pre({ sku: 'S' + item, fsn: 'F' + item, order, item, on: ist(2026, 9, 21), name: 'N', phone: 1, remark: 'Dispatch', by: '' });
+  const t = load({
+    'Pre CRM': [PRE_HEADER, P('OD1', '11'), P('OD1', '12'), P('OD2', '21')],
+    'Order Tracking': [OT_HEADER.concat(['Order Item Id']),
+      ot('OD1', '11', 'Delivered', daysAgo(5)), ot('OD1', '12', 'Delivered', daysAgo(5)), ot('OD2', '21', 'Delivered', daysAgo(5))],
+    'Self Ship Cases': [SS_FULL_HEADER,
+      ssW('OD1', '11', 'No'), ssW('OD1', '11', 'Yes'),   // two complaints, product 11: one Yes → in
+      ssW('OD2', '21', 'No'), ssW('OD2', '21', ''),      // two complaints, both not Yes → out
+    ],
+    'Review & Rating Data': [RV_HEADER],
+  });
+  t.run('CT_syncNow()');
+  const rv = () => t.tab('Review & Rating Data').slice(1).map((r) => r[0] + '/' + r[12]).sort();
+  // OD1/12 has no Self Ship row of its own → goes in by the normal rule.
+  assert.deepStrictEqual(rv(), ['OD1/11', 'OD1/12']);
+  // The "Yes" changed to "No" → product 11 leaves; product 12 stays.
+  t.tab('Self Ship Cases')[2][22] = 'No';
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(3, 23) })`);
+  assert.deepStrictEqual(rv(), ['OD1/12']);
+  // "Yes" on either of OD2's two rows → in.
+  t.tab('Self Ship Cases')[4][22] = 'Yes';
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(5, 23) })`);
+  assert.deepStrictEqual(rv(), ['OD1/12', 'OD2/21']);
+  // A Self Ship row without an Order Item ID counts for every product of that order.
+  t.tab('Self Ship Cases').push(ssW('OD1', '', 'No'));
+  t.run(`CT_onEdit({ range: SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Self Ship Cases').getRange(6, 23) })`);
+  assert.deepStrictEqual(rv(), ['OD2/21']);
 });
 
 console.log(`\nAll ${passed} sync scenarios passed`);

@@ -41,9 +41,11 @@ changes the **Order Tracking** tab, and it only ever touches its own automatic t
 - Columns G, H and M are **never** changed by the robot.
 
 **Review & Rating Data**: a product is added **2 days after its Status Date** once its Brief Status
-is **Delivered**. Orders in **Self Ship Cases** are added only if **"Eligible for Review"** (column W)
-says **Yes** (then by the same 2-day rule); with **No** or empty they are kept out, and if they are
-already there they are **removed** straight away. Changing No → Yes brings them in at once (when
+is **Delivered**. A product in **Self Ship Cases** (same Order ID and Order Item ID) is added only if
+**"Eligible for Review"** (column W) says **Yes** (then by the same 2-day rule); with **No** or empty
+it is kept out, and if it is already there it is **removed** straight away. Several complaints (rows)
+for the same product: **one "Yes" on any of them is enough**. A Self Ship row without an Order Item ID
+counts for every product of that order. Changing No → Yes brings them in at once (when
 delivered 2+ days ago). The robot fills A–G (and M, Order Item Id); your team's columns **H–L are
 never touched**.
 

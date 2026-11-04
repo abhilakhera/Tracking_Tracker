@@ -154,8 +154,8 @@ var CT_SYNC = {
   // robot fills SKU, FSN, Order Item ID, Customer Name, Phone Number, City and Pin code from
   // Pre CRM (AUTO_FILL: Self Ship column → Pre CRM column). If Pre CRM has more than one
   // product row for that order, a pop-up asks which one.
-  // ELIGIBLE: "Eligible for Review". An order in Self Ship Cases goes to Review & Rating Data
-  // only when this says "Yes" (on every Self Ship row of that order), and then by the usual rule.
+  // ELIGIBLE: "Eligible for Review". A product in Self Ship Cases goes to Review & Rating Data
+  // only when this says "Yes" (on at least one of its Self Ship rows), and then by the usual rule.
   SELF_SHIP: {
     SHEET: 'Self Ship Cases',
     HEADER_ROWS: 1,
