@@ -320,7 +320,7 @@ const iso = (x) => (x instanceof Date ? x.toISOString() : x);
   let asked = 0;
   const t = setup(rows, { CT_TRACKCOURIER_API_KEY: 'TCKEY', CT_RAJSOLUTIONS_API_KEY: 'RSKEY' }, (slug, id) => delivered('TC-' + id), {
     rajReply: (id) => json(200, { success: true, data: { shipment: { status: 'in_transit' },
-      tracking_events: [{ status: 'PICKED', location: 'Hub-' + id + ', X', timestamp: '2026-10-14 10:00:00' }] } }),
+      tracking_events: [{ status: 'PICKED', location: 'Hub-' + id + ', X', timestamp: new Date(Date.now() + 330 * 60000 - 3600000).toISOString().slice(0, 19).replace('T', ' ') }] } }), // an hour ago
     // Google's time limit arrives after 5 questions in each run.
     onFetch: () => { if (++asked % 5 === 0) vm.runInContext('CT_RUN_DEADLINE_ = 1;', t.ctx); },
   });

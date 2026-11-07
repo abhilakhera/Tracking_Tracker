@@ -7,9 +7,11 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const assert = require('assert');
+const { Utilities } = require('./fake-sheet');
 
 const ctx = vm.createContext({
   console,
+  Utilities,
   PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty() {}, deleteProperty() {} }) },
 });
 for (const f of ['Config.gs', 'Utils.gs', 'Delhivery.gs', 'TrackCourier.gs', 'DPWorld.gs', 'RajSolutions.gs', 'Main.gs']) {
@@ -159,6 +161,7 @@ test('planned (not yet happened) events are ignored', () => {
 });
 
 console.log('Raj Solutions (DP World) response parsing (real replies, customer details removed)');
+g('CT_CONFIG.RAJSOLUTIONS_STALE_DAYS = 0'); // these saved replies are old; the "no update" note is tested on its own below
 const raj = (id) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'rajsolutions-' + id + '.json'), 'utf8'));
 test('delivered docket → "Delivered (place)", delivery time as date; POD paperwork ignored', () => {
   const out = g('CT_parseRajSolutionsResult_')(raj('1846272584'));
@@ -182,6 +185,19 @@ test('only booked so far', () => {
   assert.strictEqual(out.status, 'Booked - Created');
   assert.strictEqual(g('CT_briefStatus_')(out.status), 'Booked');
   assert.strictEqual(iso(out.date), '2026-10-13T09:53:54.000Z');
+});
+test('no new scan for 4+ days (and not delivered) → "NO UPDATE" note; Brief Status stays as it was', () => {
+  g('CT_CONFIG.RAJSOLUTIONS_STALE_DAYS = 4');
+  const stamp = (daysAgo) => { const d = new Date(Date.now() + 330 * 60000 - daysAgo * 86400000); return d.toISOString().slice(0, 19).replace('T', ' '); };
+  const reply = (status, events) => ({ success: true, data: { shipment: { status }, tracking_events: events } });
+  const old = g('CT_parseRajSolutionsResult_')(reply('in_transit', [{ status: 'REACHED_DELIVERY_BRANCH', location: 'Pune, Pune, MH', timestamp: stamp(10) }]));
+  assert.ok(/^In Transit - Reached Delivery Branch \(Pune\) - NO UPDATE from Raj Solutions since .+: check on DP World's tracking page$/.test(old.status), old.status);
+  assert.strictEqual(g('CT_briefStatus_')(old.status), 'In Transit');
+  const fresh = g('CT_parseRajSolutionsResult_')(reply('in_transit', [{ status: 'REACHED_DELIVERY_BRANCH', location: 'Pune', timestamp: stamp(1) }]));
+  assert.ok(!fresh.status.includes('NO UPDATE'), fresh.status);
+  const done = g('CT_parseRajSolutionsResult_')(raj('1846272584')); // delivered weeks ago: never flagged
+  assert.strictEqual(done.status, 'Delivered (Ananthpur)');
+  g('CT_CONFIG.RAJSOLUTIONS_STALE_DAYS = 0');
 });
 test('replies: unknown docket, bad key, speed limit, server error', () => {
   const h = g('CT_handleRajSolutionsResponse_');

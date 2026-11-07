@@ -288,6 +288,10 @@ delivered, RTO.
 - **Where to find the key:** your Raj Solutions account → **API Access Control** → **Current API Key**.
   If you press **Rotate Key** there, the old key stops working: save the new one with
   **📦 Courier Tracking → Set / change API keys** (third box).
+- **Stale parcels:** Raj Solutions sometimes stops receiving DP World's scans for a parcel, which then
+  stays "In Transit" there even after delivery. After 4 days without a new scan the Tracking Status
+  says **"NO UPDATE from Raj Solutions since …: check on DP World's tracking page"**. If it was
+  delivered, type **Delivered** in Brief Status and the date in Status Date; the robot then leaves it alone.
 - DP World's own tracking page can't be used by a robot: since October 2026 it asks for a Google
   reCAPTCHA. TrackCourier.io's API doesn't offer DP World either.
 

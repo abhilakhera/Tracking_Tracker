@@ -70,7 +70,15 @@ function CT_parseRajSolutionsResult_(json) {
   var delivered = /^delivered$/i.test(shipment.status || '');
   var when = (delivered && CT_parseCourierDate_(shipment.delivered_at)) || (latest && latest.when) ||
     CT_parseCourierDate_(shipment.manifested_at || shipment.pickup_at);
-  return { status: CT_formatStatus_(main, detail, place), date: when || null };
+  var status = CT_formatStatus_(main, detail, place);
+  // Raj Solutions sometimes stops receiving DP World's scans for a parcel (it then stays "In Transit"
+  // even after delivery). Say so when nothing new came for a while, so the team checks it by hand.
+  var days = CT_CONFIG.RAJSOLUTIONS_STALE_DAYS;
+  if (days && when && !CT_isFinishedStatus_(status) && Date.now() - when.getTime() > days * 24 * 3600 * 1000) {
+    status += ' - NO UPDATE from Raj Solutions since ' + Utilities.formatDate(when, CT_CONFIG.TIMEZONE, 'dd-MMM-yyyy') +
+      ': check on DP World\'s tracking page';
+  }
+  return { status: status, date: when || null };
 }
 
 /** "in_transit" → "In Transit", "REQUEST_RTO" → "Request RTO", "manifested" → "Booked". */

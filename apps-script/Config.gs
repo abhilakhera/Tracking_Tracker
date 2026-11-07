@@ -113,6 +113,9 @@ var CT_CONFIG = {
 
   // Raj Solutions allows 20 requests per minute; a little below that leaves room for safety.
   RAJSOLUTIONS_REQUESTS_PER_MINUTE: 18,
+  // A DP World parcel with no new scan from Raj Solutions for this many days gets
+  // "NO UPDATE from Raj Solutions since …" in Tracking Status (0 = never).
+  RAJSOLUTIONS_STALE_DAYS: 4,
 
   // Technical limits. Google stops a script after 6 minutes, so the script pauses
   // before that and resumes automatically a minute later.
